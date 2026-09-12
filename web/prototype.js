@@ -446,7 +446,7 @@ function redrawLive() {
     const off = offNorth(S.sim.heading);
     const ok = Math.abs(off) <= NORTH_TOLERANCE_DEG;
     hr.textContent = `${Math.round(norm360(S.sim.heading))}°`;
-    hr.style.color = ok ? "var(--green)" : "var(--cyan-dim)";
+    hr.style.color = ok ? "var(--cyan)" : "var(--paper)";
     const hint = $("#heading-hint");
     if (hint) {
       hint.className = "heading-hint" + (ok ? " ok" : "");
@@ -459,13 +459,13 @@ function redrawLive() {
   }
 
   // GPS gate screens
-  const dot = $("#sig-dot");
-  if (dot) {
+  const ring = $("#sig-ring");
+  if (ring) {
     const q = gpsQuality();
-    dot.className = "sig-dot " + q;
+    ring.className = "sig-ring " + q;
     const label = $("#sig-label");
     if (label) {
-      label.textContent = { good: "GOOD SIGNAL", fair: "FAIR — KEEP WALKING", poor: "POOR SIGNAL" }[q];
+      label.textContent = { good: "Good signal", fair: "Fair — keep walking", poor: "Poor signal" }[q];
       label.className = "sig-label " + q;
     }
     const acc = $("#sig-acc");
@@ -482,8 +482,8 @@ function redrawLive() {
     const good = st.lastFix && st.unanchoredM < 30;
     ap.textContent = st.lastFix
       ? `anchored ${Math.round(st.secondsAgo)}s ago`
-      : "no GPS anchor yet";
-    ap.className = "pill " + (good ? "green" : "amber");
+      : "no anchor yet";
+    ap.className = "pill " + (good ? "pill--cyan" : "pill--amber");
   }
 
   for (const [id, val] of Object.entries(liveReadouts())) {
@@ -500,15 +500,15 @@ function liveReadouts() {
   const out = {};
   if (S.rec) {
     out["st-pts"] = S.rec.points.length;
-    out["st-dist"] = `${pathLength(S.rec.points).toFixed(0)}m`;
-    out["st-time"] = `${((performance.now() - S.rec.startedAt) / 1000).toFixed(0)}s`;
+    out["st-dist"] = `${pathLength(S.rec.points).toFixed(0)} m`;
+    out["st-time"] = `${((performance.now() - S.rec.startedAt) / 1000).toFixed(0)} s`;
     out["st-bldg"] = `${buildingName(S.sim.buildingId).split(" ")[0]} ${S.sim.floor}`;
   }
   const g = simGps();
   out["dbg-pos"] = `${S.sim.x.toFixed(1)}, ${S.sim.z.toFixed(1)}`;
   out["dbg-gps"] = g.lat == null ? "—" : `${g.lat.toFixed(5)}, ${g.lon.toFixed(5)}`;
   out["dbg-heading"] = `${Math.round(norm360(S.sim.heading))}°`;
-  out["dbg-alt"] = `${S.sim.altitude.toFixed(1)}m`;
+  out["dbg-alt"] = `${S.sim.altitude.toFixed(1)} m`;
   out["dbg-where"] = `${buildingName(S.sim.buildingId)} · F${S.sim.floor}`;
   out["lbl-gps"] = `GPS accuracy · ±${Math.round(S.sim.gpsAccuracy)}m`;
   out["lbl-speed"] = `Speed · ${S.sim.speed.toFixed(1)} m/s`;
@@ -518,6 +518,10 @@ function liveReadouts() {
 // ---------------------------------------------------------------------------
 // canvas: top-down map
 // ---------------------------------------------------------------------------
+// Canvas can't read the CSS tokens, so the two typefaces it needs are named
+// once here. Colours stay literal below but track prototype.html's palette.
+const MONO = "'IBM Plex Mono', ui-monospace, monospace";
+const MAP_FONT = "400 9px " + MONO;
 function drawMap(canvas) {
   const dpr = Math.min(devicePixelRatio || 1, 2);
   const w = canvas.clientWidth, h = +canvas.dataset.h || 240;
@@ -527,7 +531,7 @@ function drawMap(canvas) {
   }
   const ctx = canvas.getContext("2d");
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.fillStyle = "#020610";
+  ctx.fillStyle = "#050a10";
   ctx.fillRect(0, 0, w, h);
 
   // follow the collector at a fixed scale — a campus-wide fit would be useless
@@ -537,12 +541,12 @@ function drawMap(canvas) {
 
   // nearby building footprint markers
   if (S.buildings.length && S.campus) {
-    ctx.font = "9px ui-monospace, monospace";
+    ctx.font = MAP_FONT;
     for (const b of S.buildings) {
       const c = WA.latLonToLocal(b.lat, b.lon, S.campus);
       const sx = px(c.x), sy = py(c.z);
       if (sx < -40 || sy < -40 || sx > w + 40 || sy > h + 40) continue;
-      ctx.fillStyle = b.id === S.sim.buildingId ? "rgba(251,191,36,0.85)" : "rgba(143,182,207,0.4)";
+      ctx.fillStyle = b.id === S.sim.buildingId ? "rgba(245,169,59,0.9)" : "rgba(233,241,244,0.30)";
       ctx.beginPath(); ctx.arc(sx, sy, 3, 0, Math.PI * 2); ctx.fill();
       ctx.fillText(b.name.split(" ")[0], sx + 5, sy + 3);
     }
@@ -550,7 +554,7 @@ function drawMap(canvas) {
 
   // raw trace cells, faint — evidence, not structure
   if (S.graph && S.showRaw) {
-    ctx.strokeStyle = "rgba(120, 190, 230, 0.16)";
+    ctx.strokeStyle = "rgba(233, 241, 244, 0.09)";
     ctx.lineWidth = 1;
     for (const e of S.graph.edges.values()) {
       const a = S.graph.nodes.get(e.a), b = S.graph.nodes.get(e.b);
@@ -561,21 +565,21 @@ function drawMap(canvas) {
   // the refined graph, drawn as the real map: thickness follows evidence
   if (S.refined) {
     for (const e of S.refined.edges.values()) {
-      ctx.strokeStyle = e.vertical ? "rgba(251,191,36,0.85)" : "rgba(125,232,247,0.8)";
+      ctx.strokeStyle = e.vertical ? "rgba(245,169,59,0.85)" : "rgba(47,226,204,0.75)";
       ctx.lineWidth = Math.min(4, 1.2 + Math.log2(1 + e.evidence) * 0.5);
       ctx.beginPath();
       e.polyline.forEach((p, i) => (i ? ctx.lineTo(px(p.x), py(p.z)) : ctx.moveTo(px(p.x), py(p.z))));
       ctx.stroke();
     }
-    ctx.font = "9px ui-monospace, monospace";
+    ctx.font = MAP_FONT;
     for (const n of S.refined.nodes.values()) {
       if (n.kind === "corridor") continue;
       const sx = px(n.x), sy = py(n.z);
-      ctx.fillStyle = n.kind === "junction" ? "#eafdff" : n.kind === "portal" ? "#fbbf24" : "rgba(125,232,247,0.7)";
+      ctx.fillStyle = n.kind === "junction" ? "#e9f1f4" : n.kind === "portal" ? "#f5a93b" : "rgba(47,226,204,0.65)";
       ctx.beginPath(); ctx.arc(sx, sy, n.kind === "junction" ? 3.4 : 2.6, 0, Math.PI * 2); ctx.fill();
       // labels only near the viewer, or the map turns into a wall of text
       if (n.ref && Math.hypot(n.x - S.sim.x, n.z - S.sim.z) < 30) {
-        ctx.fillStyle = n.customName ? "#34e07a" : "rgba(234,253,255,0.55)";
+        ctx.fillStyle = n.customName ? "#2fe2cc" : "rgba(233,241,244,0.45)";
         ctx.fillText(n.customName || n.ref, sx + 5, sy - 4);
       }
     }
@@ -583,41 +587,41 @@ function drawMap(canvas) {
 
   const r = S.user.result;
   if (r && r.polyline && r.polyline.length > 1) {
-    ctx.strokeStyle = "#eafdff"; ctx.lineWidth = 3;
+    ctx.strokeStyle = "#e9f1f4"; ctx.lineWidth = 3;
     ctx.beginPath();
     r.polyline.forEach((p, i) => (i ? ctx.lineTo(px(p.x), py(p.z)) : ctx.moveTo(px(p.x), py(p.z))));
     ctx.stroke();
     // where the endpoints snapped ONTO the refined graph
     for (const s of [r.snapFrom, r.snapTo]) {
       if (!s) continue;
-      ctx.strokeStyle = "rgba(52,224,122,0.9)"; ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "rgba(47,226,204,0.9)"; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(px(s.point.x), py(s.point.z), 5, 0, Math.PI * 2); ctx.stroke();
     }
   }
 
   if (S.rec && S.rec.points.length > 1) {
-    ctx.strokeStyle = "#22d3ee"; ctx.lineWidth = 2;
+    ctx.strokeStyle = "#2fe2cc"; ctx.lineWidth = 2;
     ctx.beginPath();
     S.rec.points.forEach((p, i) => (i ? ctx.lineTo(px(p.x), py(p.z)) : ctx.moveTo(px(p.x), py(p.z))));
     ctx.stroke();
     for (const tr of S.rec.buildingTransitions) {
       const pt = S.rec.points.find((p) => p.t >= tr.t);
       if (!pt) continue;
-      ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 2;
+      ctx.strokeStyle = "#f5a93b"; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(px(pt.x), py(pt.z), 6, 0, Math.PI * 2); ctx.stroke();
     }
     for (const lm of S.rec.landmarks) {
-      ctx.fillStyle = "#fbbf24";
+      ctx.fillStyle = "#f5a93b";
       ctx.beginPath(); ctx.arc(px(lm.x), py(lm.z), 3.5, 0, Math.PI * 2); ctx.fill();
     }
   }
 
-  // GPS accuracy halo
+  // GPS accuracy halo — drawn only where the fix is the thing being decided.
   const gpsR = S.sim.gpsAccuracy * scale;
-  if (gpsR > 2) {
+  if (gpsR > 2 && (S.stage === "gps" || S.stage === "endGate")) {
     const q = gpsQuality();
-    ctx.fillStyle = q === "good" ? "rgba(52,224,122,0.08)" : "rgba(251,191,36,0.07)";
-    ctx.strokeStyle = q === "good" ? "rgba(52,224,122,0.35)" : "rgba(251,191,36,0.3)";
+    ctx.fillStyle = q === "good" ? "rgba(47,226,204,0.07)" : "rgba(245,169,59,0.06)";
+    ctx.strokeStyle = q === "good" ? "rgba(47,226,204,0.32)" : "rgba(245,169,59,0.28)";
     ctx.beginPath();
     ctx.arc(px(S.sim.x + S.sim.gpsJitter.dx), py(S.sim.z + S.sim.gpsJitter.dz), gpsR, 0, Math.PI * 2);
     ctx.fill(); ctx.stroke();
@@ -625,12 +629,12 @@ function drawMap(canvas) {
 
   const ax = px(S.sim.x), az = py(S.sim.z);
   const hr = S.sim.heading * Math.PI / 180;
-  ctx.fillStyle = "rgba(52, 224, 122, 0.25)";
+  ctx.fillStyle = "rgba(47, 226, 204, 0.22)";
   ctx.beginPath();
   ctx.moveTo(ax, az);
   ctx.arc(ax, az, 22, hr - Math.PI / 2 - 0.35, hr - Math.PI / 2 + 0.35);
   ctx.closePath(); ctx.fill();
-  ctx.fillStyle = "#34e07a";
+  ctx.fillStyle = "#2fe2cc";
   ctx.beginPath(); ctx.arc(ax, az, 4.5, 0, Math.PI * 2); ctx.fill();
 }
 
@@ -655,40 +659,40 @@ function drawCompass(canvas) {
   ctx.translate(c, c);
   ctx.rotate(-S.sim.heading * Math.PI / 180);
   const tol = NORTH_TOLERANCE_DEG * Math.PI / 180;
-  ctx.fillStyle = ok ? "rgba(52,224,122,0.18)" : "rgba(251,191,36,0.13)";
+  ctx.fillStyle = ok ? "rgba(47,226,204,0.16)" : "rgba(245,169,59,0.12)";
   ctx.beginPath(); ctx.moveTo(0, 0);
   ctx.arc(0, 0, R, -Math.PI / 2 - tol, -Math.PI / 2 + tol);
   ctx.closePath(); ctx.fill();
 
-  ctx.strokeStyle = "rgba(125,232,247,0.5)";
+  ctx.strokeStyle = "rgba(233,241,244,0.18)";
   ctx.lineWidth = 1;
   ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.stroke();
   for (let d = 0; d < 360; d += 15) {
     const a = (d - 90) * Math.PI / 180;
     const major = d % 45 === 0;
     const r1 = R * (major ? 0.86 : 0.93);
-    ctx.strokeStyle = major ? "rgba(125,232,247,0.85)" : "rgba(125,232,247,0.3)";
+    ctx.strokeStyle = major ? "rgba(233,241,244,0.5)" : "rgba(233,241,244,0.16)";
     ctx.beginPath();
     ctx.moveTo(Math.cos(a) * r1, Math.sin(a) * r1);
     ctx.lineTo(Math.cos(a) * R, Math.sin(a) * R);
     ctx.stroke();
   }
-  ctx.font = "600 14px ui-monospace, monospace";
+  ctx.font = "500 13px " + MONO;
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
   [["N", 0], ["E", 90], ["S", 180], ["W", 270]].forEach(([letter, d]) => {
     const a = (d - 90) * Math.PI / 180;
-    ctx.fillStyle = letter === "N" ? (ok ? "#34e07a" : "#fbbf24") : "rgba(143,182,207,0.85)";
+    ctx.fillStyle = letter === "N" ? (ok ? "#2fe2cc" : "#f5a93b") : "rgba(233,241,244,0.42)";
     ctx.fillText(letter, Math.cos(a) * R * 0.72, Math.sin(a) * R * 0.72);
   });
   ctx.restore();
 
-  ctx.fillStyle = ok ? "#34e07a" : "#22d3ee";
+  ctx.fillStyle = ok ? "#2fe2cc" : "#e9f1f4";
   ctx.beginPath();
-  ctx.moveTo(c, 8); ctx.lineTo(c - 8, 26); ctx.lineTo(c + 8, 26);
+  ctx.moveTo(c, 9); ctx.lineTo(c - 7, 24); ctx.lineTo(c + 7, 24);
   ctx.closePath(); ctx.fill();
-  ctx.fillStyle = "rgba(234,253,255,0.6)";
-  ctx.font = "9px ui-monospace, monospace";
-  ctx.fillText("PHONE", c, 34);
+  ctx.fillStyle = "rgba(233,241,244,0.40)";
+  ctx.font = "500 9px " + MONO;
+  ctx.fillText("PHONE", c, 36);
 }
 
 function wireCompassDrag(canvas) {
@@ -712,41 +716,57 @@ function wireCompassDrag(canvas) {
 // ---------------------------------------------------------------------------
 // shared UI fragments
 // ---------------------------------------------------------------------------
+// Every screen is built from the same three slots — nav / body / actions — so
+// the furniture never moves between steps. That consistency is most of what
+// "clean" means here; the type and colour scale in prototype.html does the
+// rest. Two rules worth keeping when porting to SwiftUI:
+//   - one primary button per screen, and it's the only filled thing on it.
+//     Back and escape hatches are quiet text, not slabs.
+//   - display font for headings and numerals, sans for sentences, mono for
+//     machine facts (units, refs, state). Never mix the jobs.
+const nav = (label, back) => `
+  <div class="nav">
+    ${back ? `<button class="nav-back" data-back="${back}" aria-label="Back">&#8592;</button>` : ""}
+    <span class="nav-label">${label}</span>
+  </div>`;
+
 function signalBlock(hint) {
   return `
-    <div class="sig-wrap">
-      <div class="sig-dot poor" id="sig-dot"></div>
-      <div class="sig-label poor" id="sig-label">—</div>
+    <div class="sig">
+      <div class="sig-ring poor" id="sig-ring"><div class="sig-core"></div></div>
       <div class="sig-acc" id="sig-acc">—</div>
-      <div class="sub" style="text-align:center;font-size:11.5px;margin-top:8px">${hint}</div>
+      <div class="sig-label poor" id="sig-label">—</div>
+      <div class="t-body" style="text-align:center;max-width:236px">${hint}</div>
     </div>`;
 }
 
 // Building declaration: type a name, confirm from ranked candidates, set floor.
+// The floor stepper sits below the scrolling list rather than inside it, so it
+// stays reachable however long the list gets.
 function buildingForm(promptText) {
   const fix = simGps();
   const list = S.form.query.trim()
     ? resolveBuilding(S.form.query, S.buildings, { lat: fix.lat, lon: fix.lon, limit: 5 })
     : buildingsNear(S.buildings, fix.lat, fix.lon, { limit: 5 });
   return `
-    <div class="sub" style="margin-bottom:6px">${promptText}</div>
-    <input id="bq" type="text" placeholder="Type a building name…" value="${S.form.query.replace(/"/g, "&quot;")}"
-      style="width:100%;font:inherit;padding:11px;border-radius:10px;background:#061020;color:var(--text);border:1px solid var(--line)"/>
-    <div style="flex:1;overflow-y:auto;min-height:0;margin-top:8px">
+    <p class="t-body">${promptText}</p>
+    <input id="bq" class="input" type="text" placeholder="Search buildings…"
+      value="${S.form.query.replace(/"/g, "&quot;")}" style="margin-top:12px"/>
+    <div class="scroll" style="margin-top:10px">
       ${list.length ? list.map((b) => `
         <button class="card ${S.form.selectedId === b.id ? "sel" : ""}" data-bid="${b.id}">
-          ${b.distanceM != null ? `<span class="dist">${b.distanceM.toFixed(0)}m</span>` : ""}
+          ${b.distanceM != null ? `<span class="dist">${b.distanceM.toFixed(0)} m</span>` : ""}
           <div class="nm">${b.name}</div>
           <div class="meta">${b.nameScore ? `match ${(b.nameScore * 100).toFixed(0)}%` : "nearby"}${b.levels ? ` · ${b.levels} levels` : ""}</div>
         </button>`).join("")
-        : `<div class="sub">No match. Try fewer letters.</div>`}
+        : `<p class="t-body">No match. Try fewer letters.</p>`}
     </div>
     <div class="floor-row">
-      <span class="sub" style="margin:0">Floor you'll be on</span>
+      <span>Floor you'll be on</span>
       <div class="stepper">
-        <button data-fl="-1">−</button>
+        <button data-fl="-1" aria-label="Floor down">&minus;</button>
         <b id="floor-val">${S.form.floor}</b>
-        <button data-fl="1">+</button>
+        <button data-fl="1" aria-label="Floor up">+</button>
       </div>
     </div>`;
 }
@@ -771,23 +791,30 @@ function wireBuildingForm(onPick) {
 // ---------------------------------------------------------------------------
 const screens = {
   start: () => ({
-    label: "COLLECTOR · START",
+    label: "Collector · Start",
     html: `
-      <div style="text-align:center"><span class="pill">DATA COLLECTOR</span></div>
-      <div class="spacer"></div>
-      <div style="text-align:center">
-        <button class="big" id="go" style="width:184px;height:184px;border-radius:50%;font-size:18px;line-height:1.3">
-          Start<br/>Mapping
-        </button>
-        <div class="sub" style="margin-top:20px">Start at a building entrance,<br/>finish at one too.</div>
+      ${nav("Collector")}
+      <div class="body">
+        <div class="spacer"></div>
+        <div class="hero">
+          <div class="hero-mark">INSID</div>
+          <p class="hero-line">Walk a building once. Everyone who follows gets the route.</p>
+        </div>
+        <div class="spacer"></div>
+        <div class="stats">
+          <div class="stat"><b>${S.walks.length}</b><span>Walks</span></div>
+          <div class="stat"><b>${S.recordings.length}</b><span>Yours</span></div>
+          <div class="stat"><b>${S.buildings.length}</b><span>Buildings</span></div>
+        </div>
+        <p class="note">
+          Every path is anchored by GPS at both ends and by facing north at the
+          start — that's what lets separate walks line up on one campus map.
+        </p>
       </div>
-      <div class="spacer"></div>
-      <div class="note" tabindex="0">
-        Every path is anchored by GPS at both ends and by facing north at the
-        start — that's what lets separate walks line up on one campus map.
-      </div>
-      <button class="ghost" id="recs">Recordings (${S.recordings.length})</button>
-      <div class="sub" style="text-align:center;margin:8px 0 0;font-size:10.5px">${S.source}</div>`,
+      <div class="actions">
+        <button class="btn btn--primary" id="go">Start mapping</button>
+        <button class="btn btn--quiet" id="recs">Recordings · ${S.recordings.length}</button>
+      </div>`,
     wire: () => {
       $("#go").onclick = () => {
         S.sim.gpsAccuracy = 24; S.sim.seekingSignal = false;
@@ -799,30 +826,36 @@ const screens = {
   }),
 
   gps: () => ({
-    label: "COLLECTOR · GPS LOCK",
+    label: "Collector · GPS lock",
     html: `
-      <h2 class="title">Step outside</h2>
-      <div class="note" tabindex="0">Stand just outside the entrance you're about to use — indoors the fix is too poor to anchor a path.</div>
-      ${signalBlock("Walk out until the dot turns green.")}
-      <canvas id="map" class="map" data-h="140" data-scale="1.6"></canvas>
-      <div class="spacer"></div>
-      <button class="ghost" id="outside">Step outside (simulated)</button>
-      <button class="big" id="sig-continue" disabled>Continue</button>
-      <button class="ghost" id="back">Back</button>`,
+      ${nav("Collector · GPS lock", "start")}
+      <div class="body">
+        <h2 class="t-display">Step outside</h2>
+        <p class="note">Stand just outside the entrance you're about to use — indoors the fix is too poor to anchor a path.</p>
+        ${signalBlock("Walk out until the reading settles below 8 m.")}
+        <canvas id="map" class="map" data-h="130" data-scale="1.6"></canvas>
+      </div>
+      <div class="actions">
+        <button class="btn btn--primary" id="sig-continue" disabled>Continue</button>
+        <button class="btn btn--quiet" id="outside">Simulate stepping outside</button>
+      </div>`,
     wire: () => {
       $("#outside").onclick = () => { S.sim.seekingSignal = true; log("walking outside for signal…"); };
       $("#sig-continue").onclick = () => go("entrance");
-      $("#back").onclick = () => go("start");
     },
   }),
 
   entrance: () => ({
-    label: "COLLECTOR · ENTRANCE",
+    label: "Collector · Entrance",
     html: `
-      <h2 class="title">Which building?</h2>
-      ${buildingForm("You're at its entrance. Pick the building you're about to enter, and the floor you'll walk in on.")}
-      <button class="big" id="form-go" ${S.form.selectedId ? "" : "disabled"}>Confirm entrance</button>
-      <button class="ghost" id="back">Back</button>`,
+      ${nav("Collector · Entrance", "gps")}
+      <div class="body">
+        <h2 class="t-display">Which building?</h2>
+        ${buildingForm("You're at its entrance. Pick the building you're about to enter, and the floor you'll walk in on.")}
+      </div>
+      <div class="actions">
+        <button class="btn btn--primary" id="form-go" ${S.form.selectedId ? "" : "disabled"}>Confirm entrance</button>
+      </div>`,
     wire: () => {
       wireBuildingForm((id, floor) => {
         S.sim.buildingId = id;
@@ -830,23 +863,25 @@ const screens = {
         log(`entrance: ${buildingName(id)} floor ${floor}`);
         go("north");
       });
-      $("#back").onclick = () => go("gps");
     },
   }),
 
   north: () => ({
-    label: "COLLECTOR · NORTH",
+    label: "Collector · North",
     html: `
-      <h2 class="title">Face north</h2>
-      <div class="note" tabindex="0">Turn until the marker lines up with N — this fixes the path's rotation, since the compass alone is off by 15–25° indoors.</div>
-      <div class="compass-wrap">
-        <canvas id="compass" class="compass"></canvas>
-        <div class="heading-read" id="heading-read">—</div>
-        <div class="heading-hint" id="heading-hint"></div>
+      ${nav("Collector · North", "entrance")}
+      <div class="body">
+        <h2 class="t-display">Face north</h2>
+        <p class="note">Turn until the marker lines up with N — this fixes the path's rotation, since the compass alone is off by 15–25° indoors.</p>
+        <div class="compass-wrap">
+          <canvas id="compass" class="compass"></canvas>
+          <div class="heading-read" id="heading-read">—</div>
+          <div class="heading-hint" id="heading-hint"></div>
+        </div>
       </div>
-      <div class="spacer"></div>
-      <button class="big" id="confirm-north" disabled>Confirm facing north</button>
-      <button class="ghost" id="back">Back</button>`,
+      <div class="actions">
+        <button class="btn btn--primary" id="confirm-north" disabled>Confirm facing north</button>
+      </div>`,
     wire: () => {
       wireCompassDrag($("#compass"));
       $("#confirm-north").onclick = () => {
@@ -854,62 +889,68 @@ const screens = {
         S.sim.heading = 0;
         go("ready");
       };
-      $("#back").onclick = () => go("entrance");
     },
   }),
 
   ready: () => ({
-    label: "COLLECTOR · READY",
+    label: "Collector · Ready",
     html: `
-      <div class="spacer"></div>
-      <div style="text-align:center">
-        <div style="font-size:40px;color:var(--green)">✓</div>
-        <h2 class="title" style="margin-top:6px">You're set</h2>
-        <div class="sub">Walk. Tell the app when you cross into a new building.</div>
+      ${nav("Collector · Ready")}
+      <div class="body">
+        <div class="spacer"></div>
+        <h2 class="t-display" style="text-align:center">You're set</h2>
+        <p class="t-body" style="text-align:center;margin-top:6px">Walk. Tell the app when you cross into a new building.</p>
+        <div class="spacer"></div>
+        <div class="summary">
+          <div class="kv"><span>Entrance</span><b>${buildingName(S.sim.buildingId)}</b></div>
+          <div class="kv"><span>Floor</span><b>${S.sim.floor}</b></div>
+          <div class="kv"><span>GPS</span><b class="${gpsQuality() === "good" ? "ok" : "warn"}">±${S.sim.gpsAccuracy.toFixed(1)} m</b></div>
+          <div class="kv"><span>North</span><b class="ok">calibrated</b></div>
+        </div>
+        <div class="spacer"></div>
       </div>
-      <div class="summary">
-        <div class="kv"><span>Entrance</span><b>${buildingName(S.sim.buildingId)}</b></div>
-        <div class="kv"><span>Floor</span><b>${S.sim.floor}</b></div>
-        <div class="kv"><span>GPS</span><b style="color:var(--green)">±${S.sim.gpsAccuracy.toFixed(1)}m</b></div>
-        <div class="kv"><span>North</span><b style="color:var(--green)">✓ calibrated</b></div>
-      </div>
-      <div class="spacer"></div>
-      <button class="big" id="rec">● Start recording</button>`,
+      <div class="actions">
+        <button class="btn btn--primary" id="rec">Start recording</button>
+      </div>`,
     wire: () => {
       $("#rec").onclick = () => { beginRecording(); go("live"); };
     },
   }),
 
   live: () => ({
-    label: "COLLECTOR · RECORDING",
+    label: "Collector · Recording",
     html: `
-      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-        <span class="pill green">● REC</span>
-        <span class="pill amber" id="where-pill">${buildingName(S.sim.buildingId)} · F${S.sim.floor}</span>
-        <span class="pill ${S.rec?.gpsFixes.length ? "" : "warnpill"}" id="anchor-pill">—</span>
-      </div>
-      <div class="stats">
-        <div class="stat"><b id="st-pts">0</b><span>POINTS</span></div>
-        <div class="stat"><b id="st-dist">0m</b><span>DIST</span></div>
-        <div class="stat"><b id="st-time">0s</b><span>TIME</span></div>
-        <div class="stat"><b id="st-bldg">—</b><span>WHERE</span></div>
-      </div>
-      <div class="map-wrap">
-        <canvas id="map" class="map" data-h="320" data-scale="3.2"></canvas>
-        <div class="map-overlay">
-          <div class="row">
-            ${["Door", "Stairs", "Elevator", "Room"].map((l) =>
-              `<button class="chip" data-lm="${l}">${l}</button>`).join("")}
-          </div>
-          <button class="chip chip-wide" id="cross">⇄ New building</button>
+      ${nav("Collector · Recording")}
+      <div class="body">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span class="pill pill--rec"><span class="dot"></span>Rec</span>
+          <span class="pill">${buildingName(S.sim.buildingId)} · F${S.sim.floor}</span>
+          <span class="pill" id="anchor-pill">—</span>
         </div>
+        <div class="stats">
+          <div class="stat"><b id="st-pts">0</b><span>Points</span></div>
+          <div class="stat"><b id="st-dist">0 m</b><span>Dist</span></div>
+          <div class="stat"><b id="st-time">0 s</b><span>Time</span></div>
+          <div class="stat"><b id="st-bldg">—</b><span>Where</span></div>
+        </div>
+        <div class="map-wrap">
+          <canvas id="map" class="map" data-h="340" data-scale="3.2"></canvas>
+          <div class="map-overlay">
+            <div style="display:flex;gap:6px">
+              ${["Door", "Stairs", "Elevator", "Room"].map((l) =>
+                `<button class="chip" data-lm="${l}">${l}</button>`).join("")}
+            </div>
+            <button class="chip chip--wide" id="cross">New building</button>
+          </div>
+        </div>
+        ${S.rec?.buildingTransitions.length ? `
+          <div class="label">Crossings</div>
+          ${S.rec.buildingTransitions.map((t) =>
+            `<div class="crossing">${t.buildingName} · floor ${t.floor}<span>${t.t.toFixed(0)} s</span></div>`).join("")}` : ""}
       </div>
-      ${S.rec?.buildingTransitions.length ? `
-        <div class="sub" style="margin-top:10px;font-size:11px">Crossings so far</div>
-        ${S.rec.buildingTransitions.map((t) =>
-          `<div class="crossing">${t.buildingName} · floor ${t.floor} <span>${t.t.toFixed(0)}s</span></div>`).join("")}` : ""}
-      <div class="spacer"></div>
-      <button class="big" id="finish" style="background:var(--red);color:#fff">Finish at an entrance</button>`,
+      <div class="actions">
+        <button class="btn btn--danger" id="finish">Finish at an entrance</button>
+      </div>`,
     wire: () => {
       $("#cross").onclick = () => {
         S.form = { query: "", selectedId: null, floor: S.sim.floor };
@@ -919,7 +960,7 @@ const screens = {
         b.onclick = () => {
           S.rec.landmarks.push({ name: b.dataset.lm, x: S.sim.x, z: S.sim.z, floor: S.sim.floor });
           log(`landmark: ${b.dataset.lm}`);
-          toast(`+ ${b.dataset.lm} added`);
+          toast(`${b.dataset.lm} added`);
           render();
         };
       });
@@ -942,32 +983,36 @@ const screens = {
     const st = exitFixStatus() || { unanchoredM: 0, estDriftM: 0, secondsAgo: null, totalM: 0 };
     const hasFix = !!st.lastFix;
     return {
-      label: "COLLECTOR · FINISH?",
+      label: "Collector · Finish?",
       html: `
-        <div class="spacer"></div>
-        <div class="sheet">
-          <h2 class="title" style="text-align:center">Finish outside if you can</h2>
-          <div class="sub" style="text-align:center">
-            ${hasFix
-              ? `Your last good GPS fix was <b style="color:var(--cyan-dim)">${Math.round(st.secondsAgo)}s ago</b>.
-                 Everything up to there is anchored — but the
-                 <b style="color:var(--amber)">${st.unanchoredM.toFixed(0)}m</b> since then isn't.`
-              : `Nothing has anchored this path since you started it.
-                 You've walked <b style="color:var(--amber)">${st.totalM.toFixed(0)}m</b>.`}
+        ${nav("Collector · Finish?", "live")}
+        <div class="body">
+          <div class="spacer"></div>
+          <div class="sheet">
+            <h2 class="t-title" style="text-align:center">Finish outside if you can</h2>
+            <p class="t-body" style="text-align:center;margin-top:8px">
+              ${hasFix
+                ? `Your last good GPS fix was <b style="color:var(--paper);font-weight:500">${Math.round(st.secondsAgo)}s ago</b>.
+                   Everything up to there is anchored — the
+                   <b style="color:var(--amber);font-weight:500">${st.unanchoredM.toFixed(0)} m</b> since then isn't.`
+                : `Nothing has anchored this path since you started it.
+                   You've walked <b style="color:var(--amber);font-weight:500">${st.totalM.toFixed(0)} m</b>.`}
+            </p>
+            <div class="cost">
+              <div class="kv"><span>Unanchored so far</span><b>${st.unanchoredM.toFixed(0)} m</b></div>
+              <div class="kv"><span>Est. error at the end</span><b class="warn">≈ ${st.estDriftM.toFixed(1)} m</b></div>
+              <div class="kv"><span>Fixable later?</span><b class="bad">No</b></div>
+            </div>
+            <p class="note note--warn">
+              Stepping outside for a few seconds pins the end of the path and
+              spreads the correction back over the whole walk. It can't be
+              recovered afterwards.
+            </p>
+            <div class="stack">
+              <button class="btn btn--primary" id="go-out">Take me outside — keep recording</button>
+              <button class="btn btn--quiet" id="save-anyway">Save without an exit fix</button>
+            </div>
           </div>
-          <div class="cost">
-            <div class="kv"><span>Unanchored so far</span><b>${st.unanchoredM.toFixed(0)} m</b></div>
-            <div class="kv"><span>Est. error at the end</span><b style="color:var(--amber)">≈ ${st.estDriftM.toFixed(1)} m</b></div>
-            <div class="kv"><span>Fixable later?</span><b style="color:var(--red)">No</b></div>
-          </div>
-          <div class="note" tabindex="0" style="margin-top:10px">
-            Stepping outside for a few seconds pins the end of the path and
-            spreads the correction back over the whole walk. It can't be
-            recovered afterwards.
-          </div>
-          <button class="big" id="go-out" style="margin-top:14px">Take me outside — keep recording</button>
-          <button class="ghost" id="save-anyway">Save without an exit fix</button>
-          <button class="ghost" id="back">Cancel</button>
         </div>`,
       wire: () => {
         $("#go-out").onclick = () => { S.sim.gpsAccuracy = 24; go("endGate"); };
@@ -975,45 +1020,51 @@ const screens = {
           log(`finishing without an exit fix · ~${st.estDriftM.toFixed(1)}m unanchored`);
           go("finish");
         };
-        $("#back").onclick = () => go("live");
       },
     };
   },
 
   transition: () => ({
-    label: "COLLECTOR · CROSSING",
+    label: "Collector · Crossing",
     html: `
-      <h2 class="title">New building</h2>
-      ${buildingForm(`Leaving ${buildingName(S.sim.buildingId)} (floor ${S.sim.floor}). Check the signage — which building is this, and what floor does it call this level?`)}
-      <div class="note" tabindex="0" style="margin-top:8px">
-        Floors don't line up between buildings — a connector can put you on
-        floor 4 of one and floor 2 of the next. That's why it asks.
+      ${nav("Collector · Crossing", "live")}
+      <div class="body">
+        <h2 class="t-display">New building</h2>
+        ${buildingForm(`Leaving ${buildingName(S.sim.buildingId)} (floor ${S.sim.floor}). Check the signage — which building is this, and what floor does it call this level?`)}
+        <p class="note">
+          Floors don't line up between buildings — a connector can put you on
+          floor 4 of one and floor 2 of the next. That's why it asks.
+        </p>
       </div>
-      <button class="big" id="form-go" ${S.form.selectedId ? "" : "disabled"}>Confirm crossing</button>
-      <button class="ghost" id="back">Cancel</button>`,
+      <div class="actions">
+        <button class="btn btn--primary" id="form-go" ${S.form.selectedId ? "" : "disabled"}>Confirm crossing</button>
+      </div>`,
     wire: () => {
       wireBuildingForm((id, floor) => {
         declareTransition(id, floor);
-        toast(`entered ${buildingName(id)} F${floor}`);
+        toast(`Entered ${buildingName(id)} · F${floor}`);
         go("live");
       });
-      $("#back").onclick = () => go("live");
     },
   }),
 
   endGate: () => ({
-    label: "COLLECTOR · FINISH OUTSIDE",
+    label: "Collector · Finish outside",
     html: `
-      <h2 class="title">Head outside</h2>
-      <div class="note" tabindex="0">Finish at a building entrance so the path gets a second GPS anchor — that's what bounds the drift.</div>
-      ${signalBlock("Still recording. Walk out until the dot turns green.")}
-      <canvas id="map" class="map" data-h="130" data-scale="2.4"></canvas>
-      <div class="spacer"></div>
-      <button class="ghost" id="outside">Step outside (simulated)</button>
-      <button class="big" id="sig-continue" disabled>I'm at an entrance</button>
-      <div class="row">
-        <button class="ghost" id="back" style="margin-top:8px">Keep walking</button>
-        <button class="ghost" id="give-up" style="margin-top:8px">Save anyway</button>
+      ${nav("Collector · Finish outside", "live")}
+      <div class="body">
+        <h2 class="t-display">Head outside</h2>
+        <p class="note">Finish at a building entrance so the path gets a second GPS anchor — that's what bounds the drift.</p>
+        ${signalBlock("Still recording. Walk out until the reading settles.")}
+        <canvas id="map" class="map" data-h="126" data-scale="2.4"></canvas>
+      </div>
+      <div class="actions">
+        <button class="btn btn--primary" id="sig-continue" disabled>I'm at an entrance</button>
+        <button class="btn btn--quiet" id="outside">Simulate stepping outside</button>
+        <div class="row">
+          <button class="btn btn--quiet" id="keep">Keep walking</button>
+          <button class="btn btn--quiet" id="give-up">Save anyway</button>
+        </div>
       </div>`,
     wire: () => {
       $("#outside").onclick = () => { S.sim.seekingSignal = true; };
@@ -1021,7 +1072,7 @@ const screens = {
         S.form = { query: "", selectedId: S.sim.buildingId, floor: S.sim.floor };
         go("endEntrance");
       };
-      $("#back").onclick = () => go("live");
+      $("#keep").onclick = () => go("live");
       // Outside but the signal still won't lock — tall buildings do exactly
       // this. A dead end here would be worse than a weaker anchor.
       $("#give-up").onclick = () => { log("finished without a usable exit fix"); go("finish"); };
@@ -1029,19 +1080,22 @@ const screens = {
   }),
 
   endEntrance: () => ({
-    label: "COLLECTOR · END ENTRANCE",
+    label: "Collector · End entrance",
     html: `
-      <h2 class="title">Which entrance?</h2>
-      ${buildingForm("Confirm the building you just walked out of, and the floor that entrance is on.")}
-      <button class="big" id="form-go" ${S.form.selectedId ? "" : "disabled"}>Confirm &amp; finish</button>
-      <button class="ghost" id="back">Back</button>`,
+      ${nav("Collector · End entrance", "endGate")}
+      <div class="body">
+        <h2 class="t-display">Which entrance?</h2>
+        ${buildingForm("Confirm the building you just walked out of, and the floor that entrance is on.")}
+      </div>
+      <div class="actions">
+        <button class="btn btn--primary" id="form-go" ${S.form.selectedId ? "" : "disabled"}>Confirm &amp; finish</button>
+      </div>`,
     wire: () => {
       wireBuildingForm((id, floor) => {
         S.sim.buildingId = id; S.sim.floor = floor;
         captureEndEntrance();       // this is what makes the walk fully anchored
         go("finish");
       });
-      $("#back").onclick = () => go("endGate");
     },
   }),
 
@@ -1050,33 +1104,37 @@ const screens = {
     const dist = S.rec ? pathLength(S.rec.points) : 0;
     const crossings = S.rec ? S.rec.buildingTransitions : [];
     return {
-      label: "COLLECTOR · SAVE",
+      label: "Collector · Save",
       html: `
-        <h2 class="title">Path complete</h2>
-        <div class="stats">
-          <div class="stat"><b>${pts}</b><span>POINTS</span></div>
-          <div class="stat"><b>${dist.toFixed(0)}m</b><span>DIST</span></div>
-          <div class="stat"><b>${crossings.length + 1}</b><span>BUILDINGS</span></div>
+        ${nav("Collector · Save")}
+        <div class="body">
+          <h2 class="t-display">Path complete</h2>
+          <div class="stats">
+            <div class="stat"><b>${pts}</b><span>Points</span></div>
+            <div class="stat"><b>${dist.toFixed(0)} m</b><span>Dist</span></div>
+            <div class="stat"><b>${crossings.length + 1}</b><span>Buildings</span></div>
+          </div>
+          <div class="label">Path name</div>
+          <input id="nm" class="input" type="text" placeholder="e.g. Wean 4 → Doherty tunnel"/>
+          <div class="summary" style="margin-top:12px">
+            <div class="kv"><span>Started</span><b>${S.rec ? S.rec.startEntrance.buildingName + " · F" + S.rec.startEntrance.floor : "—"}</b></div>
+            ${crossings.map((c) => `<div class="kv"><span>Crossed into</span><b>${c.buildingName} · F${c.floor}</b></div>`).join("")}
+            <div class="kv"><span>Ended</span><b>${buildingName(S.sim.buildingId)} · F${S.sim.floor}</b></div>
+            ${S.rec?.endEntrance
+              ? `<div class="kv"><span>Exit fix</span><b class="ok">±${S.rec.endEntrance.gpsAccuracy.toFixed(1)} m</b></div>`
+              : `<div class="kv"><span>Exit fix</span><b class="warn">${
+                   S.rec?.gpsFixes.length ? "last mid-walk fix" : "unanchored end"}</b></div>`}
+          </div>
+          ${!S.rec?.endEntrance ? `<p class="note note--warn">
+            Saving without an exit fix. The path is still kept and still useful —
+            it just can't have its end drift corrected.
+          </p>` : ""}
+          <div class="spacer"></div>
         </div>
-        <label style="font-size:11px;color:var(--sub)">PATH NAME</label>
-        <input id="nm" type="text" placeholder="e.g. Wean 4 → Doherty tunnel"
-          style="width:100%;font:inherit;padding:11px;border-radius:10px;background:#061020;color:var(--text);border:1px solid var(--line);margin-top:4px"/>
-        <div class="summary" style="margin-top:12px">
-          <div class="kv"><span>Started</span><b>${S.rec ? S.rec.startEntrance.buildingName + " F" + S.rec.startEntrance.floor : "—"}</b></div>
-          ${crossings.map((c) => `<div class="kv"><span>→ crossed</span><b>${c.buildingName} F${c.floor}</b></div>`).join("")}
-          <div class="kv"><span>Ended</span><b>${buildingName(S.sim.buildingId)} F${S.sim.floor}</b></div>
-          ${S.rec?.endEntrance
-            ? `<div class="kv"><span>Exit fix</span><b style="color:var(--green)">✓ ±${S.rec.endEntrance.gpsAccuracy.toFixed(1)}m</b></div>`
-            : `<div class="kv"><span>Exit fix</span><b style="color:var(--amber)">none — ${
-                 S.rec?.gpsFixes.length ? "using last mid-walk fix" : "unanchored end"}</b></div>`}
-        </div>
-        ${!S.rec?.endEntrance ? `<div class="note" tabindex="0" style="margin-top:8px;border-color:var(--amber)">
-          Saving without an exit fix. The path is still kept and still useful —
-          it just can't have its end drift corrected.
-        </div>` : ""}
-        <div class="spacer"></div>
-        <button class="big" id="save">Save &amp; upload</button>
-        <button class="ghost" id="discard">Discard</button>`,
+        <div class="actions">
+          <button class="btn btn--primary" id="save">Save &amp; upload</button>
+          <button class="btn btn--quiet" id="discard">Discard</button>
+        </div>`,
       wire: () => {
         $("#save").onclick = () => { finishRecording($("#nm").value.trim()); go("start"); };
         $("#discard").onclick = () => { S.rec = null; log("recording discarded"); go("start"); };
@@ -1085,29 +1143,30 @@ const screens = {
   },
 
   recordings: () => ({
-    label: "COLLECTOR · RECORDINGS",
+    label: "Collector · Recordings",
     html: `
-      <h2 class="title">Recordings</h2>
-      <div class="sub">${S.recordings.length} captured this session.</div>
-      <div style="flex:1;overflow-y:auto;min-height:0">
-        ${S.recordings.length ? S.recordings.map((w) => {
-          const p = w.placement || {};
-          return `<div class="card" style="cursor:default">
-            <div class="nm">${w.name || w.id}</div>
-            <div class="meta">${w.points.length} pts · ${pathLength(w.points).toFixed(0)}m ·
-              ${(w.buildingTransitions?.length || 0) + 1} buildings</div>
-            <div class="meta" style="color:${p.anchorEnd === "endEntrance" ? "var(--green)" : "var(--amber)"}">
-              ${{ endEntrance: "✓ anchored both ends", gpsFix: "⚠ mid-walk fix only", none: "⚠ end unanchored" }[p.anchorEnd] || "not placed"}
-            </div>
-            <div class="meta">${p.residualM != null
-              ? `drift ${p.residualM.toFixed(1)}m ${p.driftCorrected ? "corrected" : "not corrected"}`
-              : "no closure fix"}${p.northCheckDeg != null ? ` · north off ${p.northCheckDeg.toFixed(0)}°` : ""}</div>
-          </div>`;
-        }).join("")
-          : `<div class="sub">Nothing yet — record a path, or use “simulate a full run” in the debug rail.</div>`}
-      </div>
-      <button class="ghost" id="back">Back</button>`,
-    wire: () => { $("#back").onclick = () => go("start"); },
+      ${nav("Collector · Recordings", "start")}
+      <div class="body">
+        <h2 class="t-display">Recordings</h2>
+        <p class="t-body" style="margin-bottom:12px">${S.recordings.length} captured this session.</p>
+        <div class="scroll">
+          ${S.recordings.length ? S.recordings.map((w) => {
+            const p = w.placement || {};
+            const anchor = { endEntrance: "anchored both ends", gpsFix: "mid-walk fix only", none: "end unanchored" }[p.anchorEnd] || "not placed";
+            return `<div class="card card--static">
+              <div class="nm">${w.name || w.id}</div>
+              <div class="meta">${w.points.length} pts · ${pathLength(w.points).toFixed(0)} m ·
+                ${(w.buildingTransitions?.length || 0) + 1} buildings</div>
+              <div class="meta" style="color:${p.anchorEnd === "endEntrance" ? "var(--cyan)" : "var(--amber)"}">${anchor}</div>
+              <div class="meta">${p.residualM != null
+                ? `drift ${p.residualM.toFixed(1)} m ${p.driftCorrected ? "corrected" : "not corrected"}`
+                : "no closure fix"}${p.northCheckDeg != null ? ` · north off ${p.northCheckDeg.toFixed(0)}°` : ""}</div>
+            </div>`;
+          }).join("")
+            : `<p class="t-body">Nothing yet — record a path, or use “simulate a full run” in the debug rail.</p>`}
+        </div>
+      </div>`,
+    wire: () => {},
   }),
 
   // ---- user (wayfinder) ----
@@ -1132,26 +1191,31 @@ const screens = {
     }
 
     return {
-      label: "USER · DESTINATION",
+      label: "Wayfinder · Destination",
       html: `
-        <h2 class="title">Where to?</h2>
-        <div class="sub">${snap
-          ? `On <b style="color:var(--cyan-dim)">${snap.edge.name || "the map"}</b>, ${snap.distanceM.toFixed(1)}m from the line`
-          : "Not on the map yet"}</div>
-        <canvas id="map" class="map" data-h="140" data-scale="3"></canvas>
-        <div class="sub" style="margin:10px 0 4px;font-size:10.5px;letter-spacing:0.14em">DESTINATION</div>
-        <div style="flex:1;overflow-y:auto;min-height:0">
-          ${places.length ? [...groups].map(([level, list]) => `
-            <div class="levelhead">${level}</div>
-            ${list.map((n) => `
-              <button class="card ${S.user.destId === n.id ? "sel" : ""}" data-id="${n.id}">
-                <span class="dist">${n.distanceM.toFixed(0)}m</span>
-                <div class="nm">${n.name}</div>
-                <div class="meta">${n.ref}${n.customName ? " · named" : ""} · ${n.kind}</div>
-              </button>`).join("")}`).join("")
-            : `<div class="sub">No map yet — record a path in COLLECTOR mode first.</div>`}
+        ${nav("Insid · Wayfinder")}
+        <div class="body">
+          <h2 class="t-display">Where to?</h2>
+          <p class="t-body" style="margin-top:4px">${snap
+            ? `On ${snap.edge.name || "the map"}, ${snap.distanceM.toFixed(1)} m from the line`
+            : "Not on the map yet"}</p>
+          <canvas id="map" class="map" data-h="140" data-scale="3" style="margin-top:12px"></canvas>
+          <div class="label">Destination</div>
+          <div class="scroll">
+            ${places.length ? [...groups].map(([level, list]) => `
+              <div class="levelhead">${level}</div>
+              ${list.map((n) => `
+                <button class="card ${S.user.destId === n.id ? "sel" : ""}" data-id="${n.id}">
+                  <span class="dist">${n.distanceM.toFixed(0)} m</span>
+                  <div class="nm">${n.name}</div>
+                  <div class="meta">${n.ref}${n.customName ? " · named" : ""} · ${n.kind}</div>
+                </button>`).join("")}`).join("")
+              : `<p class="t-body">No map yet — record a path in Collector mode first.</p>`}
+          </div>
         </div>
-        <button class="big" id="go" ${S.user.destId ? "" : "disabled"}>Find route</button>`,
+        <div class="actions">
+          <button class="btn btn--primary" id="go" ${S.user.destId ? "" : "disabled"}>Find route</button>
+        </div>`,
       wire: () => {
         document.querySelectorAll(".card[data-id]").forEach((b) => {
           b.onclick = () => { S.user.destId = b.dataset.id; render(); };
@@ -1178,28 +1242,39 @@ const screens = {
     const from = r?.snapFrom?.edge;
     const floors = r ? [...new Set(r.nodes.map((n) => n.floorKey ?? n.floor))] : [];
     return {
-      label: "USER · ROUTE",
+      label: "Wayfinder · Route",
       html: `
-        <h2 class="title">${to ? to.name : "Route"}</h2>
-        <div class="sub">${to ? to.ref : ""}${from ? ` · from ${from.name || from.ref || "the map"}` : ""}</div>
-        ${r ? `
-          <div class="stats">
-            <div class="stat"><b>${r.lengthM.toFixed(0)}m</b><span>DIST</span></div>
-            <div class="stat"><b>${Math.max(1, Math.round(r.lengthM / 1.3 / 60))}min</b><span>WALK</span></div>
-            <div class="stat"><b>${floors.length}</b><span>LEVELS</span></div>
-          </div>
-          <canvas id="map" class="map" data-h="280" data-scale="3"></canvas>
-          <div class="sub" style="margin:10px 0 4px;font-size:10.5px;letter-spacing:0.14em">STEPS</div>
-          <div style="flex:1;overflow-y:auto;min-height:0">
-            ${routeSteps(r).map((s, i) => `
-              <div class="card" style="cursor:default">
-                <span class="dist">${s.dist.toFixed(0)}m</span>
-                <div class="nm">${i + 1}. ${s.text}</div>
-              </div>`).join("")}
-          </div>`
-        : `<div class="sub" style="color:var(--amber)">No route — nobody has walked a path connecting those yet.</div><div class="spacer"></div>`}
-        <button class="ghost" id="back">Pick another destination</button>`,
-      wire: () => { $("#back").onclick = () => { S.user.result = null; go("dest"); }; },
+        ${nav("Wayfinder · Route", "dest")}
+        <div class="body">
+          <h2 class="t-display">${to ? to.name : "Route"}</h2>
+          <p class="t-mono" style="margin-top:2px">${to ? to.ref : ""}${from ? ` · from ${from.name || from.ref || "the map"}` : ""}</p>
+          ${r ? `
+            <div class="stats">
+              <div class="stat"><b>${r.lengthM.toFixed(0)} m</b><span>Dist</span></div>
+              <div class="stat"><b>${Math.max(1, Math.round(r.lengthM / 1.3 / 60))} min</b><span>Walk</span></div>
+              <div class="stat"><b>${floors.length}</b><span>Levels</span></div>
+            </div>
+            <canvas id="map" class="map" data-h="260" data-scale="3"></canvas>
+            <div class="label">Steps</div>
+            <div class="scroll">
+              ${routeSteps(r).map((s, i) => `
+                <div class="step">
+                  <span class="n">${i + 1}</span>
+                  <span class="txt">${s.text}</span>
+                  <span class="d">${s.dist.toFixed(0)} m</span>
+                </div>`).join("")}
+            </div>`
+          : `<p class="note note--warn">No route — nobody has walked a path connecting those yet.</p><div class="spacer"></div>`}
+        </div>
+        <div class="actions">
+          <button class="btn btn--quiet" id="back">Pick another destination</button>
+        </div>`,
+      wire: () => {
+        const again = () => { S.user.result = null; go("dest"); };
+        $("#back").onclick = again;
+        const nb = document.querySelector(".nav-back");
+        if (nb) nb.onclick = again;
+      },
     };
   },
 };
@@ -1238,7 +1313,13 @@ function routeSteps(r) {
   return steps.length ? steps : [{ text: "You're basically there", dist: r.lengthM }];
 }
 
-function go(stage) { S.stage = stage; render(); }
+// The stage lives in the URL hash, so prototype.html#north opens straight to
+// that step. Iterating on one screen shouldn't mean clicking through four.
+function go(stage) {
+  S.stage = stage;
+  if (location.hash.slice(1) !== stage) history.replaceState(null, "", "#" + stage);
+  render();
+}
 
 // ---------------------------------------------------------------------------
 // debug rail
@@ -1260,13 +1341,13 @@ function railHtml() {
     <div class="kv"><span>junctions / portals</span><b>${
       S.refined ? [...S.refined.nodes.values()].filter((n) => n.kind === "junction").length : 0} / ${
       S.refined ? [...S.refined.nodes.values()].filter((n) => n.kind === "portal").length : 0}</b></div>
-    <div class="kv"><span>longest raw edge</span><b>${maxEdge.toFixed(2)}m</b></div>
+    <div class="kv"><span>longest raw edge</span><b>${maxEdge.toFixed(2)} m</b></div>
     <button id="b-showraw" class="${S.showRaw ? "on" : ""}">${S.showRaw ? "◼ Hide raw trace cells" : "▢ Show raw trace cells"}</button>
     <div class="kv"><span>legacy north spread</span><b>${g.northSpreadDeg != null ? "±" + g.northSpreadDeg.toFixed(0) + "°" : "—"}</b></div>
     ${Object.keys(S.floorHeights).length ? `
       <div class="kv"><span>learned floor heights</span><b></b></div>
       ${Object.entries(S.floorHeights).map(([id, v]) =>
-        `<div class="kv"><span style="padding-left:8px">${id}</span><b>${v.heightM.toFixed(2)}m ×${v.samples}</b></div>`).join("")}` : ""}
+        `<div class="kv"><span style="padding-left:8px">${id}</span><b>${v.heightM.toFixed(2)} m ×${v.samples}</b></div>`).join("")}` : ""}
     ${S.floorLinks.length ? `
       <div class="kv"><span>cross-building links</span><b></b></div>
       ${S.floorLinks.slice(0, 6).map((l) =>
@@ -1489,16 +1570,22 @@ function render() {
   const scr = (screens[S.stage] || screens.start)();
   $("#stage-label").textContent = scr.label;
   screenEl.innerHTML = scr.html;
+  // Back is declared in markup (data-back) and wired once, before the screen's
+  // own wiring — so a screen that needs to do more on the way out can simply
+  // rebind .nav-back instead of every screen hand-rolling a back button.
+  document.querySelectorAll("[data-back]").forEach((b) => {
+    b.onclick = () => go(b.dataset.back);
+  });
   scr.wire?.();
   $("#src").innerHTML =
     `<b>${S.walks.length}</b> walks · <b>${S.buildings.length}</b> buildings · <b>${S.graph ? S.graph.nodes.size : 0}</b> nodes`;
   syncRail();
 }
 
-document.querySelectorAll(".modes button").forEach((b) => {
+document.querySelectorAll(".seg button").forEach((b) => {
   b.onclick = () => {
-    document.querySelectorAll(".modes button").forEach((x) => x.classList.remove("active"));
-    b.classList.add("active");
+    document.querySelectorAll(".seg button").forEach((x) => x.classList.remove("on"));
+    b.classList.add("on");
     S.mode = b.dataset.mode;
     S.stage = S.mode === "user" ? "dest" : "start";
     render();
@@ -1515,6 +1602,16 @@ addEventListener("keydown", (e) => {
   };
   if (map[e.key]) { e.preventDefault(); map[e.key](); }
 });
+
+// Honour a deep link on load; the mode has to follow, or render() bounces the
+// stage back to that mode's first screen.
+const deepLink = location.hash.slice(1);
+if (screens[deepLink]) {
+  S.stage = deepLink;
+  S.mode = ["dest", "route"].includes(deepLink) ? "user" : "collector";
+  document.querySelectorAll(".seg button").forEach((b) =>
+    b.classList.toggle("on", b.dataset.mode === S.mode));
+}
 
 render();
 requestAnimationFrame(tick);
