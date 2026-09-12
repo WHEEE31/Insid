@@ -22,6 +22,8 @@ without re-walking.
 | `docs/path-schema.md` | the data contract (recorder ⇄ pipeline ⇄ vis) |
 | `recorder/` | iOS ARKit recorder app + setup guide (build on a Mac) |
 | `site/` | the public marketing page — **`site/logo.svg` is the company mark; change it and every mark on the page follows** |
+| `behind/` | the "behind the scenes" page — deployed separately so it can change after the main site is handed in |
+| `render.yaml` | hosting: three static sites on Render (`site/`, `web/`, `behind/`) — see `site/README.md` |
 | `web/` | three.js visualization + processing pipeline |
 | `web/pipeline/floors.js` | floor detection (barometric altitude peaks) |
 | `web/pipeline/graph.js` | routing graph + Dijkstra across floors (8ft max edge) |

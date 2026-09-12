@@ -7,7 +7,9 @@ scale), plus the "behind the scenes" page it links to.
 |------|------|
 | `index.html` | the page itself — self-contained, no build step |
 | `logo.svg` | **the company mark. Change this file, and every mark on the page changes.** |
-| `fun-facts.html` | "behind the scenes" — photo/diary template, linked from the hero |
+
+"Behind the scenes" used to live here as `fun-facts.html`; it now has its own
+directory and its own deploy at `behind/` — see **Hosting** below.
 
 ## Changing the logo
 
@@ -50,13 +52,36 @@ straight off disk will fall back to the built-in mark.
 cd site && python3 -m http.server 8790
 ```
 
-## Publishing
+## Hosting
 
-The live page is a Claude Artifact, published separately from this repo:
+Three static sites on Render, defined in `render.yaml` at the repo root. Each
+has its own `rootDir`, so a push only redeploys the services whose files
+actually changed.
+
+| what | directory | URL |
+|------|-----------|-----|
+| marketing one-pager | `site/` | https://insid.onrender.com |
+| indoor path vis | `web/` | https://insid-vis.onrender.com |
+| behind the scenes | `behind/` | https://insid-behind.onrender.com |
+
+Those URLs are referenced in three places — two `href`s in `site/index.html`
+(marked by a comment near the top) and the back-link in `behind/index.html`.
+If a Render service ends up with a different name, fix those.
+
+### First-time setup (one manual pass, in the Render dashboard)
+
+1. Render → **New → Blueprint**
+2. Connect the `alexacchang/hackcmu` repo and pick `main`
+3. Render reads `render.yaml` and offers all three sites — **Apply**
+
+After that, every push to `main` deploys automatically.
+
+### The Claude Artifact
+
+There is also a copy of the marketing page published as an artifact:
 
     https://claude.ai/code/artifact/cb2b2dc6-dcd5-4046-a151-832b44e100be
 
-**Editing these files does not update the live page** — the artifact has its
-own copy. This directory is the source of truth to edit and review; republishing
-pushes it live. Existing share links keep pointing at whichever version was
-pinned in the artifact's share menu until that pin is moved.
+It is a **separate copy** — editing this directory does not update it, and it
+does not update this directory. Once Render is live, that artifact is redundant
+for anything but quick previews.

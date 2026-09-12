@@ -1,0 +1,44 @@
+# Render Blueprint — three static sites, one repo.
+#
+# Render reads this file when you create a Blueprint from the repo, and every
+# push to main redeploys whichever services changed.
+#
+# `rootDir` is the important bit: each service only rebuilds when files inside
+# its own directory change. Editing behind/ will not redeploy the marketing
+# site, which is what lets the "behind the scenes" page keep moving after the
+# main site has been handed in for review.
+#
+# `staticPublishPath: .` means "serve this directory as-is" — everything here
+# is plain static HTML/JS/JSON with no build step, so there is no buildCommand.
+#
+# Service names must be unique across all of Render, so if one is already
+# taken the dashboard will say so — rename it here and update the three URLs
+# recorded in site/README.md and the two links in site/index.html.
+
+services:
+  # ---- 1. the marketing one-pager (the site handed to reviewers) ----
+  - name: insid
+    type: web
+    runtime: static
+    rootDir: ./site
+    staticPublishPath: .
+
+  # ---- 2. the indoor path visualisation ----
+  # index.html is the 3D walk/graph/route vis; also ships graph-view.html
+  # (2D per-floor debug), map.html (walks on OSM) and prototype.html (the
+  # app UI prototype). web/config.js is gitignored, so this deploy has no
+  # Supabase credentials and reads the committed sample walks in web/data/.
+  - name: insid-vis
+    type: web
+    runtime: static
+    rootDir: ./web
+    staticPublishPath: .
+
+  # ---- 3. behind the scenes ----
+  # Deliberately its own service so it can be edited and redeployed without
+  # touching, or redeploying, the reviewed marketing site.
+  - name: insid-behind
+    type: web
+    runtime: static
+    rootDir: ./behind
+    staticPublishPath: .
