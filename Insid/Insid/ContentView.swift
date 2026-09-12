@@ -17,6 +17,12 @@ struct ContentView: View {
     @State private var showShare = false
     @State private var showRecordings = false
 
+    // Upload (Supabase) state — drives the cloud button + a small status line.
+    enum UploadStatus: Equatable {
+        case idle, uploading, done, failed(String)
+    }
+    @State private var uploadStatus: UploadStatus = .idle
+
     var body: some View {
         ZStack(alignment: .bottom) {
             ARViewContainer(session: rec.session).ignoresSafeArea()
@@ -78,7 +84,21 @@ struct ContentView: View {
                         .background(Color(.systemGray5)).clipShape(Capsule())
                 }
                 .disabled(rec.lastExportURL == nil || rec.isRecording)
+
+                Button(action: uploadLatest) {
+                    Group {
+                        if uploadStatus == .uploading {
+                            ProgressView()
+                        } else {
+                            Image(systemName: "icloud.and.arrow.up")
+                        }
+                    }
+                    .font(.headline).padding(.vertical, 12).padding(.horizontal, 18)
+                    .background(Color(.systemGray5)).clipShape(Capsule())
+                }
+                .disabled(rec.lastExportURL == nil || rec.isRecording || uploadStatus == .uploading)
             }
+            uploadStatusLabel
             Button(action: { showRecordings = true }) {
                 HStack {
                     Image(systemName: "list.bullet")
@@ -87,6 +107,37 @@ struct ContentView: View {
                 .font(.subheadline.weight(.medium))
                 .frame(maxWidth: .infinity).padding(.vertical, 10)
                 .background(Color(.systemGray5)).clipShape(Capsule())
+            }
+        }
+    }
+
+    // Small status line under the controls reflecting the last upload attempt.
+    @ViewBuilder private var uploadStatusLabel: some View {
+        switch uploadStatus {
+        case .idle:
+            EmptyView()
+        case .uploading:
+            Text("Uploading…").font(.caption).foregroundStyle(.secondary)
+        case .done:
+            Label("Uploaded to Supabase", systemImage: "checkmark.circle.fill")
+                .font(.caption).foregroundStyle(.green)
+        case .failed(let message):
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .font(.caption).foregroundStyle(.orange)
+                .multilineTextAlignment(.center)
+        }
+    }
+
+    // Upload the latest exported recording to Supabase via Uploader.
+    private func uploadLatest() {
+        guard let url = rec.lastExportURL else { return }
+        uploadStatus = .uploading
+        Uploader.shared.upload(fileURL: url) { result in
+            switch result {
+            case .success:
+                uploadStatus = .done
+            case .failure(let error):
+                uploadStatus = .failed(error.localizedDescription)
             }
         }
     }
