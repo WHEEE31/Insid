@@ -22,9 +22,9 @@ Indoor Google Maps
 
 ## iOS app structure
 
-The SwiftUI source scaffold lives in `ios/HackCMU/`. This repository currently
+The SwiftUI source scaffold lives in `ios/HackCMU/HackCMU/`. This repository currently
 does not contain an Xcode project, so the `.xcodeproj` and workspace files are
 intentionally not checked in or hand-edited. In Xcode, create an iOS App target
-named `HackCMU`, add the files under `ios/HackCMU/`, and use `Info.plist` as the
+named `HackCMU`, add the files under `ios/HackCMU/HackCMU/`, and use `Info.plist` as the
 target's property list. The source tree includes the SwiftUI entry point,
 sensor/location services, dead reckoning, networking, and map/recording views.
