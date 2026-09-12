@@ -32,6 +32,7 @@ without re-walking.
 ```
 cd web && python3 -m http.server 8777
 # open http://localhost:8777/index.html
+# graph debug http://localhost:8000/graph-view.html
 ```
 
 Loads real walks from `web/data/` if present, else synthetic sample data.
