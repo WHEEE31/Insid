@@ -38,7 +38,7 @@ cd web && python3 -m http.server 8777
 |---|---|
 | `index.html` | the 3D hologram vis — walks, merged graph, routes |
 | `graph-view.html` | 2D per-floor debug view of the merged graph (flags any edge over the 8ft cap) |
-| `prototype.html` | **interactive app prototype** — collector + wayfinder flows in a phone frame, with simulated compass/GPS/walking. Iterate on UX here instead of rebuilding in Xcode. |
+| `prototype.html` | **interactive app prototype** — collector + wayfinder flows in a phone frame, with simulated compass/GPS/walking. Iterate on UX here instead of rebuilding in Xcode. Append a stage to the URL (`prototype.html#north`) to open straight to one screen. |
 | `map.html` | walks + nodes on a real OSM map |
 
 Loads real walks from Supabase if `web/config.js` exists, else `web/data/`,
