@@ -213,6 +213,7 @@ export function makeCampusFrame(lat0, lon0) {
 export function placeWalkByEntrances(walk, campus, {
   driftCorrect = true,
   maxDriftM = 60,
+  maxClosureAccuracyM = 12,
 } = {}) {
   const start = walk?.startEntrance;
   if (!start || !Number.isFinite(start.lat) || !Number.isFinite(start.lon)) {
@@ -236,19 +237,31 @@ export function placeWalkByEntrances(walk, campus, {
     startAccuracyM: start.gpsAccuracy ?? null,
   };
 
-  const end = walk.endEntrance;
-  if (end && Number.isFinite(end.lat) && Number.isFinite(end.lon)) {
-    const last = points[points.length - 1];
-    const target = latLonToLocal(end.lat, end.lon, campus);
+  const closure = pickClosure(walk, maxClosureAccuracyM);
+  if (closure) {
+    // The point the closure fix corresponds to. For an end entrance that's the
+    // last point; for an opportunistic mid-walk fix it's wherever the collector
+    // was when the fix came in.
+    const anchorIdx = closure.source === "endEntrance"
+      ? points.length - 1
+      : indexAtTime(points, closure.t);
+    const last = points[anchorIdx];
+    const target = latLonToLocal(closure.lat, closure.lon, campus);
     const rx = target.x - last.x, rz = target.z - last.z;
     const residualM = Math.hypot(rx, rz);
     info.residualM = residualM;
-    info.endBuildingId = end.buildingId ?? null;
+    info.anchorEnd = closure.source;
+    info.endBuildingId = closure.buildingId ?? null;
+    if (closure.source !== "endEntrance") {
+      const tail = (points[points.length - 1].t ?? 0) - (closure.t ?? 0);
+      info.warning = `no exit fix — drift is only bounded up to ${closure.t.toFixed(0)}s; ` +
+        `the last ${tail.toFixed(0)}s stay uncorrected`;
+    }
 
     // Cross-check north, but only when the GPS baseline is long enough to beat
     // its own error — otherwise the "check" is just noise.
     const baselineM = Math.hypot(target.x - origin.x, target.z - origin.z);
-    const fixError = (start.gpsAccuracy ?? 10) + (end.gpsAccuracy ?? 10);
+    const fixError = (start.gpsAccuracy ?? 10) + (closure.gpsAccuracy ?? 10);
     if (baselineM > fixError * 1.5) {
       const bearingOf = (ax, az, bx, bz) => norm360(Math.atan2(bx - ax, -(bz - az)) / DEG);
       const gps = bearingOf(origin.x, origin.z, target.x, target.z);
@@ -265,19 +278,51 @@ export function placeWalkByEntrances(walk, campus, {
       info.driftCorrected = false;
       info.warning = `end residual ${residualM.toFixed(0)}m exceeds maxDriftM ${maxDriftM}m`;
     } else if (driftCorrect) {
+      // Ramp the correction from 0 at the start to the full residual at the
+      // anchor. Past the anchor we know nothing more, so the correction holds
+      // flat rather than continuing to extrapolate.
       const t0 = points[0].t ?? 0;
-      const span = ((last.t ?? 1) - t0) || 1;
+      const tAnchor = last.t ?? 1;
+      const span = (tAnchor - t0) || 1;
       points = points.map((p) => {
-        const f = (((p.t ?? t0) - t0) / span);
+        const f = Math.min(1, ((p.t ?? t0) - t0) / span);
         return { ...p, x: p.x + rx * f, z: p.z + rz * f };
       });
       info.driftCorrected = true;
     }
   } else {
-    info.warning = "no end-entrance fix — drift is unbounded";
+    info.anchorEnd = "none";
+    info.warning = "no exit fix and no usable GPS during the walk — drift is unbounded";
   }
 
   return { ...aligned, points, placed: true, placement: info };
+}
+
+// Which fix closes the loop: the exit entrance if the collector reached one,
+// otherwise the last good opportunistic fix taken during the walk. A mid-walk
+// fix is worth using — it still bounds drift up to the moment it was taken,
+// which is most of the walk if the collector passed outside at some point.
+function pickClosure(walk, maxAccuracyM) {
+  const end = walk.endEntrance;
+  if (end && Number.isFinite(end.lat) && Number.isFinite(end.lon)) {
+    return { ...end, source: "endEntrance" };
+  }
+  const usable = (walk.gpsFixes || []).filter(
+    (f) => Number.isFinite(f.lat) && Number.isFinite(f.lon)
+      && (f.gpsAccuracy ?? 99) <= maxAccuracyM
+  );
+  if (!usable.length) return null;
+  const best = usable[usable.length - 1];
+  return { ...best, source: "gpsFix" };
+}
+
+function indexAtTime(points, t) {
+  let best = 0;
+  for (let i = 0; i < points.length; i++) {
+    if ((points[i].t ?? 0) <= t) best = i;
+    else break;
+  }
+  return best;
 }
 
 // Ground distance in meters between two lat/lons (equirectangular — fine at
@@ -437,6 +482,37 @@ export function runSelfTest() {
       && approx(placed.points[0].x, 0, 1e-6) && approx(placed.points[0].z, 0, 1e-6)
       && approx(pEnd.x, endLocal.x, 1e-6) && approx(pEnd.z, endLocal.z, 1e-6)
       && placed.placement.driftCorrected === true,
+  });
+
+  // 4c. No exit fix, but the collector passed outside mid-walk: that fix still
+  //     bounds drift up to the moment it was taken, and the tail after it is
+  //     left alone rather than extrapolated.
+  const midFix = localToLatLon(20, -20, campus);
+  const noExit = {
+    id: "w-no-exit",
+    northAligned: true,
+    startEntrance: { buildingId: "wean-hall", floor: 1, t: 0, gpsAccuracy: 4, ...startFix },
+    endEntrance: null,
+    gpsFixes: [{ t: 5, gpsAccuracy: 6, ...midFix }],
+    points: [
+      { t: 0, x: 0, y: 0, z: 0 },
+      { t: 5, x: 23, y: 0, z: -23 },   // thinks it went further than GPS says
+      { t: 10, x: 40, y: 0, z: -40 },
+    ],
+  };
+  const partial = placeWalkByEntrances(noExit, campus);
+  const midLocal = latLonToLocal(midFix.lat, midFix.lon, campus);
+  const tailOffsetX = partial.points[2].x - noExit.points[2].x;
+  const midOffsetX = partial.points[1].x - noExit.points[1].x;
+  results.push({
+    name: "a mid-walk fix anchors what it can and leaves the tail alone",
+    anchorEnd: partial.placement.anchorEnd,
+    midPinned: approx(partial.points[1].x, midLocal.x, 1e-6) && approx(partial.points[1].z, midLocal.z, 1e-6),
+    warning: partial.placement.warning,
+    // past the anchor the correction holds flat instead of extrapolating
+    pass: partial.placed && partial.placement.anchorEnd === "gpsFix"
+      && approx(partial.points[1].x, midLocal.x, 1e-6)
+      && approx(tailOffsetX, midOffsetX, 1e-6),
   });
 
   results.push({

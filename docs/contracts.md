@@ -173,6 +173,10 @@ declarationsOf(walk): Declaration[]   // startEntrance + transitions + endEntran
 // world-align.js — entrance anchoring.
 makeCampusFrame(lat0, lon0): Georef                  // ONE frame for all walks
 placeWalkByEntrances(walk, campus, opts): Walk       // + .placed, .placement
+// .placement.anchorEnd is "endEntrance" | "gpsFix" | "none". The exit fix is
+// encouraged, not required; without one it closes on the last good mid-walk
+// gpsFixes entry, correcting drift up to that moment and holding flat after
+// (never extrapolating past what's actually known).
 
 // graph.js — split before clustering, or a tracking jump becomes a fake corridor.
 splitOnTrackingLoss(walks, {breakStates, maxSpeedMps}): Walk[]

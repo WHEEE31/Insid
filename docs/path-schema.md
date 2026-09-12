@@ -152,6 +152,15 @@ actually works, and must declare **every building it crosses into** along the wa
 | `endEntrance.lat/lon` | a **closure constraint**. After placement the last point should land on this fix; the miss is accumulated drift, rubber-sheeted away by `placeWalkByEntrances`. Over a long baseline it also cross-checks the north gesture (`northCheckDeg`). |
 | `*.buildingId` | which building's floor ladder applies. Resolved from what the collector types via `web/pipeline/buildings.js` against an OSM gazetteer scoped to this campus, so "Roberts" can only mean Roberts Engineering Hall. |
 | `*.floor` | re-bases the barometer (below). Asked at **every** threshold, including the start. |
+| `gpsFixes[]` | `{t, lat, lon, gpsAccuracy}` banked opportunistically whenever signal is good mid-walk. GPS isn't only available at the endpoints — a collector who passes outside between buildings anchors everything up to that moment. |
+
+`endEntrance` is **strongly encouraged, not required.** Blocking a save without
+one would throw away real walking, so the recorder instead states the cost —
+how far you've walked since the last anchor, and the resulting error estimate
+(ARKit drift runs ~1–2% of distance travelled) — and lets the collector decide.
+A walk saved without it keeps `endEntrance: null`, and `placeWalkByEntrances`
+falls back to the last good `gpsFixes` entry: drift is then corrected up to that
+moment and held flat afterwards, rather than extrapolated past what's known.
 
 Outside is the one place GPS is trustworthy — roughly ±5m with open sky versus
 ±15–25m indoors, which is what the pre-v5 recordings actually show. The recorder

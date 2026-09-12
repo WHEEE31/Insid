@@ -41,7 +41,7 @@ const S = {
   sim: {
     heading: 137, x: 0, z: 0,
     buildingId: null, floor: 1, altitude: 0,
-    gpsAccuracy: 24, seekingSignal: false,
+    gpsAccuracy: 24, seekingSignal: false, indoors: false,
     autoWalk: false, speed: 1.4, target: null,
     gpsJitter: { dx: 0, dz: 0 },
     trackingGlitch: 0,
@@ -184,8 +184,15 @@ function beginRecording() {
     },
     buildingTransitions: [],
     landmarks: [],
+    // Opportunistic fixes taken whenever signal is good mid-walk. GPS isn't
+    // only available at the two endpoints — if the collector passes outside
+    // between buildings, that moment anchors everything up to it, so ending
+    // without an exit fix costs much less than it otherwise would.
+    gpsFixes: [],
+    endEntrance: null,
     points: [samplePoint(0)],
   };
+  S.sim.indoors = true;   // signal starts decaying from here
   log(`recording started · ${buildingName(S.sim.buildingId)} floor ${S.sim.floor}`);
 }
 
@@ -199,12 +206,43 @@ function samplePoint(t) {
   };
 }
 
+const GPS_FIX_INTERVAL_S = 4;
+
 function recordSample() {
   if (!S.rec) return;
   const t = (performance.now() - S.rec.startedAt) / 1000;
   const last = S.rec.points[S.rec.points.length - 1];
   if (last && t - last.t < 1 / SAMPLE_HZ) return;
   S.rec.points.push(samplePoint(t));
+
+  // bank a fix whenever the signal is good enough to be worth anything
+  const fixes = S.rec.gpsFixes;
+  const lastFix = fixes[fixes.length - 1];
+  if (gpsQuality() === "good" && (!lastFix || t - lastFix.t >= GPS_FIX_INTERVAL_S)) {
+    const g = simGps();
+    fixes.push({ t, lat: g.lat, lon: g.lon, gpsAccuracy: S.sim.gpsAccuracy });
+  }
+}
+
+// How well anchored the recording currently is, and what ending right now costs.
+// ARKit drift runs roughly 1-2% of distance travelled; 1.5% is used as an
+// estimate, clearly labelled as one in the UI.
+const DRIFT_RATE = 0.015;
+function exitFixStatus() {
+  if (!S.rec) return null;
+  const now = (performance.now() - S.rec.startedAt) / 1000;
+  const fixes = S.rec.gpsFixes;
+  const last = fixes.length ? fixes[fixes.length - 1] : null;
+  const since = last
+    ? pathLength(S.rec.points.filter((p) => p.t >= last.t))
+    : pathLength(S.rec.points);
+  return {
+    lastFix: last,
+    secondsAgo: last ? now - last.t : null,
+    unanchoredM: since,
+    estDriftM: since * DRIFT_RATE,
+    totalM: pathLength(S.rec.points),
+  };
 }
 
 // The collector crossed into a new building — usually because they saw signage.
@@ -222,10 +260,20 @@ function declareTransition(buildingId, floor) {
   log(`crossed ${buildingName(wasBuilding)} ${wasFloor} → ${buildingName(buildingId)} ${floor}`);
 }
 
+function captureEndEntrance() {
+  if (!S.rec) return;
+  const fix = simGps();
+  S.rec.endEntrance = {
+    buildingId: S.sim.buildingId,
+    buildingName: buildingName(S.sim.buildingId),
+    floor: S.sim.floor,
+    lat: fix.lat, lon: fix.lon, gpsAccuracy: S.sim.gpsAccuracy,
+    t: (performance.now() - S.rec.startedAt) / 1000,
+  };
+}
+
 function finishRecording(name) {
   if (!S.rec) return null;
-  const fix = simGps();
-  const t = (performance.now() - S.rec.startedAt) / 1000;
   const walk = {
     schemaVersion: 5,
     id: `proto-${Date.now()}`,
@@ -237,13 +285,11 @@ function finishRecording(name) {
     startHeading: { trueHeading: 0, accuracy: 3, calibrated: true },
     startEntrance: S.rec.startEntrance,
     buildingTransitions: S.rec.buildingTransitions,
-    endEntrance: {
-      buildingId: S.sim.buildingId,
-      buildingName: buildingName(S.sim.buildingId),
-      floor: S.sim.floor,
-      lat: fix.lat, lon: fix.lon, gpsAccuracy: S.sim.gpsAccuracy,
-      t,
-    },
+    // null when the collector chose to stop without reaching an exit — the
+    // walk is still saved, and placeWalkByEntrances falls back to the last
+    // good mid-walk fix rather than discarding the path.
+    endEntrance: S.rec.endEntrance,
+    gpsFixes: S.rec.gpsFixes,
     landmarks: S.rec.landmarks,
     points: S.rec.points,
   };
@@ -257,8 +303,9 @@ function finishRecording(name) {
   rebuild();
 
   const p = placed.placement || {};
-  log(`saved ${walk.id} · ${walk.points.length} pts · ` +
-      (p.residualM != null ? `drift ${p.residualM.toFixed(1)}m ${p.driftCorrected ? "corrected" : "UNCORRECTED"}` : "no end fix"));
+  const anchor = { endEntrance: "exit fix", gpsFix: "mid-walk fix only", none: "UNANCHORED" }[p.anchorEnd] || "—";
+  log(`saved ${walk.id} · ${walk.points.length} pts · ${anchor}` +
+      (p.residualM != null ? ` · drift ${p.residualM.toFixed(1)}m ${p.driftCorrected ? "corrected" : "UNCORRECTED"}` : ""));
   if (p.northCheckDeg != null) log(`north cross-check: off by ${p.northCheckDeg.toFixed(1)}°`);
   S.rec = null;
   return finalWalk;
@@ -340,10 +387,15 @@ function tick(now) {
   if (S.sim.autoWalk) autoWalkTick(dt);
   if (S.sim.trackingGlitch > 0) S.sim.trackingGlitch -= dt;
 
-  // "Step outside": signal improves as the collector leaves the building.
+  // Signal follows where the collector is: it recovers within seconds of
+  // stepping outside and decays once they're inside. Without the decay the
+  // prototype would bank a usable fix the whole way through a building, which
+  // is the opposite of what actually happens.
   if (S.sim.seekingSignal) {
     S.sim.gpsAccuracy = Math.max(3.5, S.sim.gpsAccuracy - dt * 6);
-    if (S.sim.gpsAccuracy <= 4) S.sim.seekingSignal = false;
+    if (S.sim.gpsAccuracy <= 4) { S.sim.seekingSignal = false; S.sim.indoors = false; }
+  } else if (S.sim.indoors) {
+    S.sim.gpsAccuracy = Math.min(28, S.sim.gpsAccuracy + dt * 3);
   }
 
   const j = S.sim.gpsJitter;
@@ -396,6 +448,18 @@ function redrawLive() {
     if (acc) acc.textContent = `±${S.sim.gpsAccuracy.toFixed(1)} m`;
     const go = $("#sig-continue");
     if (go) go.disabled = q !== "good";
+  }
+
+  // live anchor state — so the collector knows before they're standing at the
+  // finish button, not only once they press it
+  const ap = $("#anchor-pill");
+  if (ap && S.rec) {
+    const st = exitFixStatus();
+    const good = st.lastFix && st.unanchoredM < 30;
+    ap.textContent = st.lastFix
+      ? `anchored ${Math.round(st.secondsAgo)}s ago`
+      : "no GPS anchor yet";
+    ap.className = "pill " + (good ? "green" : "amber");
   }
 
   for (const [id, val] of Object.entries(liveReadouts())) {
@@ -769,6 +833,7 @@ const screens = {
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
         <span class="pill green">● REC</span>
         <span class="pill amber" id="where-pill">${buildingName(S.sim.buildingId)} · F${S.sim.floor}</span>
+        <span class="pill ${S.rec?.gpsFixes.length ? "" : "warnpill"}" id="anchor-pill">—</span>
       </div>
       <div class="stats">
         <div class="stat"><b id="st-pts">0</b><span>POINTS</span></div>
@@ -803,9 +868,63 @@ const screens = {
           render();
         };
       });
-      $("#finish").onclick = () => { S.sim.gpsAccuracy = 24; go("endGate"); };
+      // Already outside with a solid fix? Skip the nagging and go confirm the
+      // entrance. Otherwise explain what stopping here actually costs.
+      $("#finish").onclick = () => {
+        if (gpsQuality() === "good") {
+          S.form = { query: "", selectedId: S.sim.buildingId, floor: S.sim.floor };
+          go("endEntrance");
+        } else {
+          go("exitPrompt");
+        }
+      };
     },
   }),
+
+  // Soft gate: never blocks saving (that would throw away real walking), but
+  // states the cost in meters rather than waving at "accuracy".
+  exitPrompt: () => {
+    const st = exitFixStatus() || { unanchoredM: 0, estDriftM: 0, secondsAgo: null, totalM: 0 };
+    const hasFix = !!st.lastFix;
+    return {
+      label: "COLLECTOR · FINISH?",
+      html: `
+        <div class="spacer"></div>
+        <div class="sheet">
+          <div style="font-size:34px;text-align:center">📍</div>
+          <h2 class="title" style="text-align:center;margin-top:6px">Finish outside if you can</h2>
+          <div class="sub" style="text-align:center">
+            ${hasFix
+              ? `Your last good GPS fix was <b style="color:var(--cyan-dim)">${Math.round(st.secondsAgo)}s ago</b>.
+                 Everything up to there is anchored — but the
+                 <b style="color:var(--amber)">${st.unanchoredM.toFixed(0)}m</b> since then isn't.`
+              : `Nothing has anchored this path since you started it.
+                 You've walked <b style="color:var(--amber)">${st.totalM.toFixed(0)}m</b>.`}
+          </div>
+          <div class="cost">
+            <div class="kv"><span>Unanchored so far</span><b>${st.unanchoredM.toFixed(0)} m</b></div>
+            <div class="kv"><span>Est. error at the end</span><b style="color:var(--amber)">≈ ${st.estDriftM.toFixed(1)} m</b></div>
+            <div class="kv"><span>Fixable later?</span><b style="color:var(--red)">No</b></div>
+          </div>
+          <div class="note" style="margin-top:10px">
+            Stepping outside for a few seconds pins the end of the path and
+            spreads the correction back over the whole walk. It can't be
+            recovered afterwards.
+          </div>
+          <button class="big" id="go-out" style="margin-top:14px">Take me outside — keep recording</button>
+          <button class="ghost" id="save-anyway">Save without an exit fix</button>
+          <button class="ghost" id="back">Cancel</button>
+        </div>`,
+      wire: () => {
+        $("#go-out").onclick = () => { S.sim.gpsAccuracy = 24; go("endGate"); };
+        $("#save-anyway").onclick = () => {
+          log(`finishing without an exit fix · ~${st.estDriftM.toFixed(1)}m unanchored`);
+          go("finish");
+        };
+        $("#back").onclick = () => go("live");
+      },
+    };
+  },
 
   transition: () => ({
     label: "COLLECTOR · CROSSING",
@@ -834,7 +953,10 @@ const screens = {
       <div class="spacer"></div>
       <button class="ghost" id="outside">🚪 Step outside (simulate)</button>
       <button class="big" id="sig-continue" disabled>I'm at an entrance</button>
-      <button class="ghost" id="back">Keep walking inside</button>`,
+      <div class="row">
+        <button class="ghost" id="back" style="margin-top:8px">Keep walking</button>
+        <button class="ghost" id="give-up" style="margin-top:8px">Save anyway</button>
+      </div>`,
     wire: () => {
       $("#outside").onclick = () => { S.sim.seekingSignal = true; };
       $("#sig-continue").onclick = () => {
@@ -842,6 +964,9 @@ const screens = {
         go("endEntrance");
       };
       $("#back").onclick = () => go("live");
+      // Outside but the signal still won't lock — tall buildings do exactly
+      // this. A dead end here would be worse than a weaker anchor.
+      $("#give-up").onclick = () => { log("finished without a usable exit fix"); go("finish"); };
     },
   }),
 
@@ -855,6 +980,7 @@ const screens = {
     wire: () => {
       wireBuildingForm((id, floor) => {
         S.sim.buildingId = id; S.sim.floor = floor;
+        captureEndEntrance();       // this is what makes the walk fully anchored
         go("finish");
       });
       $("#back").onclick = () => go("endGate");
@@ -881,8 +1007,15 @@ const screens = {
           <div class="kv"><span>Started</span><b>${S.rec ? S.rec.startEntrance.buildingName + " F" + S.rec.startEntrance.floor : "—"}</b></div>
           ${crossings.map((c) => `<div class="kv"><span>→ crossed</span><b>${c.buildingName} F${c.floor}</b></div>`).join("")}
           <div class="kv"><span>Ended</span><b>${buildingName(S.sim.buildingId)} F${S.sim.floor}</b></div>
-          <div class="kv"><span>End GPS</span><b style="color:var(--green)">±${S.sim.gpsAccuracy.toFixed(1)}m</b></div>
+          ${S.rec?.endEntrance
+            ? `<div class="kv"><span>Exit fix</span><b style="color:var(--green)">✓ ±${S.rec.endEntrance.gpsAccuracy.toFixed(1)}m</b></div>`
+            : `<div class="kv"><span>Exit fix</span><b style="color:var(--amber)">none — ${
+                 S.rec?.gpsFixes.length ? "using last mid-walk fix" : "unanchored end"}</b></div>`}
         </div>
+        ${!S.rec?.endEntrance ? `<div class="note" style="margin-top:8px;border-color:var(--amber)">
+          Saving without an exit fix. The path is still kept and still useful —
+          it just can't have its end drift corrected.
+        </div>` : ""}
         <div class="spacer"></div>
         <button class="big" id="save">Save &amp; upload</button>
         <button class="ghost" id="discard">Discard</button>`,
@@ -905,9 +1038,12 @@ const screens = {
             <div class="nm">${w.name || w.id}</div>
             <div class="meta">${w.points.length} pts · ${pathLength(w.points).toFixed(0)}m ·
               ${(w.buildingTransitions?.length || 0) + 1} buildings</div>
+            <div class="meta" style="color:${p.anchorEnd === "endEntrance" ? "var(--green)" : "var(--amber)"}">
+              ${{ endEntrance: "✓ anchored both ends", gpsFix: "⚠ mid-walk fix only", none: "⚠ end unanchored" }[p.anchorEnd] || "not placed"}
+            </div>
             <div class="meta">${p.residualM != null
               ? `drift ${p.residualM.toFixed(1)}m ${p.driftCorrected ? "corrected" : "not corrected"}`
-              : "not placed"}${p.northCheckDeg != null ? ` · north off ${p.northCheckDeg.toFixed(0)}°` : ""}</div>
+              : "no closure fix"}${p.northCheckDeg != null ? ` · north off ${p.northCheckDeg.toFixed(0)}°` : ""}</div>
           </div>`;
         }).join("")
           : `<div class="sub">Nothing yet — record a path, or use “simulate a full run” in the debug rail.</div>`}
@@ -1084,9 +1220,9 @@ function wireRail() {
   on("r-heading", "oninput", (e) => { S.sim.heading = +e.target.value; });
   on("b-north", "onclick", () => { S.sim.heading = 0; });
   on("b-rand-head", "onclick", () => { S.sim.heading = Math.random() * 360; });
-  on("r-gps", "oninput", (e) => { S.sim.gpsAccuracy = +e.target.value; S.sim.seekingSignal = false; });
-  on("b-gps-good", "onclick", () => { S.sim.gpsAccuracy = 4; S.sim.seekingSignal = false; });
-  on("b-gps-poor", "onclick", () => { S.sim.gpsAccuracy = 28; S.sim.seekingSignal = false; });
+  on("r-gps", "oninput", (e) => { S.sim.gpsAccuracy = +e.target.value; S.sim.seekingSignal = false; S.sim.indoors = false; });
+  on("b-gps-good", "onclick", () => { S.sim.gpsAccuracy = 4; S.sim.seekingSignal = false; S.sim.indoors = false; });
+  on("b-gps-poor", "onclick", () => { S.sim.gpsAccuracy = 28; S.sim.seekingSignal = false; S.sim.indoors = true; });
   on("b-fl-up", "onclick", () => { changeFloor(1); render(); });
   on("b-fl-down", "onclick", () => { changeFloor(-1); render(); });
   on("r-speed", "oninput", (e) => { S.sim.speed = +e.target.value; });
@@ -1214,6 +1350,7 @@ function startFullRun() {
     } else if (phase === "endGate") {
       if (gpsQuality() === "good") {
         S.form = { query: "", selectedId: S.sim.buildingId, floor: S.sim.floor };
+        captureEndEntrance();
         phase = "save"; elapsed = 0;
         go("finish");
       }
