@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Indoor Map Overlay — Georeferenced Walks</title>
+
+  <!-- Leaflet from unpkg (no token). -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin="" />
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""></script>
+
+  <style>
+    :root {
+      --bg: #0f1115; --panel: rgba(20,24,31,0.92); --fg: #e8ecf1;
+      --muted: #9aa4b2; --accent: #4da3ff; --border: #2a3140;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body { font: 13px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: var(--fg); }
+    #map { position: absolute; inset: 0; z-index: 0; background: #1a1d23; }
+
+    .hud {
+      position: absolute; z-index: 1000; top: 12px; left: 12px;
+      width: 300px; max-width: calc(100vw - 24px); max-height: calc(100vh - 24px);
+      overflow: auto; background: var(--panel); color: var(--fg);
+      border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px;
+      backdrop-filter: blur(6px); box-shadow: 0 6px 24px rgba(0,0,0,0.4);
+    }
+    .hud h1 { font-size: 15px; margin: 0 0 4px; }
+    .hud .sub { color: var(--muted); font-size: 12px; margin: 0 0 10px; }
+    .hud h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
+      color: var(--muted); margin: 14px 0 6px; }
+    .row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+    .swatch { width: 22px; height: 4px; border-radius: 2px; flex: none; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; border: 1px solid #fff6; }
+    button {
+      font: inherit; color: var(--fg); background: #232a36; border: 1px solid var(--border);
+      border-radius: 8px; padding: 7px 10px; cursor: pointer; width: 100%; margin-top: 6px;
+    }
+    button:hover { background: #2c3646; }
+    button.active { background: var(--accent); color: #06121f; border-color: var(--accent); font-weight: 600; }
+    button.secondary { background: transparent; }
+    .status { font-size: 12px; color: var(--accent); margin: 8px 0 0; min-height: 1.2em; }
+    .note { font-size: 11.5px; color: var(--muted); margin: 6px 0 0; }
+    .legend { max-height: 160px; overflow: auto; }
+    .cp { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--muted); }
+    code { background: #1b2129; padding: 1px 4px; border-radius: 4px; }
+    .warn { color: #ffb454; }
+    .ok { color: #7ee787; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div class="hud" id="hud">
+    <h1>Indoor Map Overlay</h1>
+    <p class="sub">Recorded walks + nodes, georeferenced onto OSM via 2 control points.</p>
+
+    <div id="loadStatus" class="note">Loading…</div>
+
+    <h2>Georeference</h2>
+    <button id="cpToggle" class="secondary">Set control points…</button>
+    <p class="status" id="cpStatus"></p>
+    <div class="cp" id="cpList"></div>
+    <button id="cpReset" class="secondary">Reset to CMU defaults</button>
+    <p class="note">
+      Positions are georeferenced by fitting a similarity transform
+      (rotation + uniform scale + translation) to <b>2 control points</b>
+      (a building-local point ↔ its true lat/lon). Control points persist in
+      <code>localStorage</code>.
+    </p>
+
+    <h2>Walks</h2>
+    <div class="legend" id="walkLegend"></div>
+
+    <h2>Layers</h2>
+    <div class="row"><span class="swatch" style="background:#e07a5f"></span> OSM building footprints</div>
+    <div class="row"><span class="dot" style="background:#2ecc71"></span> walk start &nbsp;
+      <span class="dot" style="background:#e74c3c"></span> walk end</div>
+    <div class="row"><span class="dot" style="background:#4da3ff"></span> registry nodes</div>
+    <div id="overpassStatus" class="note"></div>
+  </div>
+
+  <script type="module" src="./map.js"></script>
+</body>
+</html>

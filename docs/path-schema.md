@@ -54,6 +54,9 @@ these recordings — so we can try different strategies without re-walking.
 | `unit`          | yes      | always `meters`                                                   |
 | `up`            | yes      | vertical axis — `y` for ARKit                                      |
 | `startAnchorId` | yes      | shared-origin id. Walks with the SAME id share one frame (§Anchoring). |
+| `startNodeId`   | no       | v3: registry node the walk started on — translation anchor (see contracts.md). |
+| `orientNodeId`  | no       | v3: registry node walked toward — rotation anchor. |
+| `endNodeId`     | no       | v3: registry node at the end — optional drift correction. |
 | `startLatLon`   | no       | one-shot GPS at start — coarse Earth placement / display only.     |
 | `startHeading`  | no       | compass heading at start (°, true). Unreliable indoors; advisory.  |
 | `baroReference` | no       | pressure (kPa) at start; `relAltitude` is derived relative to it.  |

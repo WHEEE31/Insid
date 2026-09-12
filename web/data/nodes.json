@@ -1,0 +1,57 @@
+{
+  "frame": "building-local",
+  "unit": "meters",
+  "up": "y",
+  "nodes": [
+    {
+      "id": "lobby-door",
+      "name": "Lobby Door",
+      "floor": 0,
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "lat": null,
+      "lon": null
+    },
+    {
+      "id": "corridor-a1",
+      "name": "Corridor A Junction",
+      "floor": 0,
+      "x": 12.5,
+      "y": 0,
+      "z": 4.0,
+      "lat": null,
+      "lon": null
+    },
+    {
+      "id": "elevator-lobby",
+      "name": "Elevator Lobby",
+      "floor": 0,
+      "x": 18.0,
+      "y": 0,
+      "z": -2.5,
+      "lat": null,
+      "lon": null
+    },
+    {
+      "id": "stair-landing-0",
+      "name": "Stairwell Landing (G)",
+      "floor": 0,
+      "x": 22.0,
+      "y": 0,
+      "z": 9.0,
+      "lat": null,
+      "lon": null
+    },
+    {
+      "id": "stair-landing-1",
+      "name": "Stairwell Landing (L1)",
+      "floor": 1,
+      "x": 22.0,
+      "y": 4.2,
+      "z": 9.0,
+      "lat": null,
+      "lon": null
+    }
+  ]
+}

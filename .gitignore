@@ -6,6 +6,7 @@ Thumbs.db
 .env
 .env.*
 *.local
+web/config.js
 
 # Dependencies
 node_modules/
