@@ -1,16 +1,24 @@
 import Foundation
 
-// Codable structs matching docs/path-schema.md (v2). Encoding these to JSON
+// Codable structs matching docs/path-schema.md (v3). Encoding these to JSON
 // produces exactly what the web pipeline + vis consume.
+//
+// v3 adds optional node references (startNodeId / orientNodeId / endNodeId) used
+// to anchor a walk into the shared building-local frame (see docs/contracts.md).
+// They are Optional, so older walk JSON (which omits them) still decodes.
 
 struct Walk: Codable {
-    var schemaVersion = 2
+    var schemaVersion = 3
     var id: String
     var device = "iphone-arkit"
     var recordedAt: String
     var unit = "meters"
     var up = "y"
     var startAnchorId: String
+    // v3 node references (optional — omitted by older walks + the future no-setup UX)
+    var startNodeId: String?    // node the walk started on (translation anchor)
+    var orientNodeId: String?   // node walked toward / faced (rotation anchor)
+    var endNodeId: String?      // node at the end (optional drift correction)
     var startLatLon: LatLon?
     var startHeading: Heading?
     var baroReference: Double?
