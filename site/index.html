@@ -1,0 +1,1000 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Insid</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --ink:#070b10;
+    --panel:#111a24;
+    --paper:#e9f1f4;
+    --cyan:#2fe2cc;
+    --amber:#f5a93b;
+    --fog:rgba(233,241,244,.62);
+    --fog-dim:rgba(233,241,244,.40);
+    --line:rgba(233,241,244,.12);
+    --line-strong:rgba(233,241,244,.20);
+    --cyan-line:rgba(47,226,204,.35);
+    --cyan-glow:rgba(47,226,204,.22);
+    --amber-glow:rgba(245,169,59,.20);
+    --font-display:'Rajdhani',system-ui,'Segoe UI',sans-serif;
+    --font-body:'IBM Plex Sans',system-ui,'Segoe UI',sans-serif;
+    --font-mono:'IBM Plex Mono','SFMono-Regular',Consolas,monospace;
+  }
+
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:var(--ink);
+    color:var(--paper);
+    font-family:var(--font-body);
+    font-size:16px;
+    line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{background:var(--cyan-glow);color:var(--paper);}
+  a{color:var(--cyan);}
+  a:focus-visible, button:focus-visible{outline:2px solid var(--cyan);outline-offset:3px;}
+  h1,h2,h3{font-family:var(--font-display);font-weight:700;text-wrap:balance;margin:0;color:var(--paper);}
+  p{margin:0;}
+  .mono{font-family:var(--font-mono);}
+
+  .wrap{max-width:1180px;margin-inline:auto;padding-inline:clamp(20px,5vw,64px);}
+  .prose{max-width:640px;}
+  .prose p + p{margin-top:1rem;}
+
+  .eyebrow{
+    display:flex;align-items:center;gap:.6rem;
+    font-family:var(--font-mono);font-size:.72rem;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--cyan);margin-bottom:1.1rem;
+  }
+  .eyebrow::before{content:"";width:22px;height:1px;background:var(--cyan);display:inline-block;}
+
+  h2.section-title{font-size:clamp(1.7rem,3.6vw,2.5rem);letter-spacing:.01em;margin-bottom:1.4rem;}
+
+  /* ---------- scroll progress ---------- */
+  #progress{position:fixed;top:0;left:0;height:3px;width:0;background:var(--cyan);
+    box-shadow:0 0 10px var(--cyan-glow);z-index:60;transition:width .08s linear;}
+
+  /* ---------- side rail ---------- */
+  .rail{
+    display:none;position:fixed;left:26px;top:50%;transform:translateY(-50%);
+    z-index:50;flex-direction:column;gap:22px;
+  }
+  @media (min-width:1020px){ .rail{display:flex;} }
+  .rail a{
+    display:flex;align-items:center;gap:10px;text-decoration:none;
+    color:var(--fog-dim);font-family:var(--font-mono);font-size:.68rem;letter-spacing:.08em;
+  }
+  .rail .dot{width:7px;height:7px;border-radius:50%;background:var(--line-strong);
+    box-shadow:0 0 0 3px transparent;transition:background .2s,box-shadow .2s;flex:none;}
+  .rail .label{opacity:0;transform:translateX(-4px);transition:opacity .2s,transform .2s;white-space:nowrap;}
+  .rail a:hover .label, .rail a.active .label{opacity:1;transform:translateX(0);}
+  .rail a.active{color:var(--cyan);}
+  .rail a.active .dot{background:var(--cyan);box-shadow:0 0 0 3px var(--cyan-glow);}
+
+  /* ---------- hero ---------- */
+  .hero{
+    position:relative;min-height:100vh;min-height:100svh;
+    display:flex;flex-direction:column;justify-content:center;
+    padding-block:96px 64px;overflow:hidden;isolation:isolate;
+  }
+  #hero-canvas{position:absolute;inset:0;width:100%;height:100%;z-index:-1;}
+  .hero::after{
+    content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;
+    background:radial-gradient(ellipse 70% 60% at 30% 40%, rgba(7,11,16,0) 0%, var(--ink) 88%);
+  }
+  .hero-tag{
+    font-family:var(--font-mono);font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--fog);margin-bottom:1.4rem;
+  }
+  .hero h1{font-size:clamp(3.4rem,11vw,7.2rem);letter-spacing:.02em;line-height:.92;
+    background:linear-gradient(120deg,var(--paper) 55%,var(--cyan) 130%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;}
+  .hero-sub{max-width:520px;margin-top:1.4rem;font-size:1.15rem;color:var(--fog);}
+  .hero-scroll{margin-top:1.6rem;font-family:var(--font-mono);font-size:.76rem;
+    color:var(--fog-dim);text-decoration:none;display:inline-flex;
+    align-items:center;gap:.4rem;}
+  .hero-scroll:hover{color:var(--cyan);}
+
+  /* ---------- hero orbs (raw sample / path builder / behind the scenes) ---------- */
+  .hero-orbs{position:relative;z-index:2;display:flex;flex-direction:row;flex-wrap:wrap;
+    gap:1.7rem;margin-top:3rem;}
+  @media (min-width:900px){
+    .hero-orbs{position:absolute;right:clamp(20px,5vw,64px);top:50%;
+      transform:translateY(-50%);flex-direction:column;margin-top:0;gap:2.1rem;}
+  }
+  .orb-wrap{display:flex;flex-direction:column;align-items:center;gap:.55rem;}
+  .orb{
+    width:92px;height:92px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    background:rgba(17,26,36,.72);border:1px solid var(--line-strong);backdrop-filter:blur(6px);
+    overflow:hidden;text-decoration:none;position:relative;
+    transition:transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+  }
+  a.orb:hover{transform:translateY(-4px);border-color:var(--cyan-line);box-shadow:0 12px 28px rgba(47,226,204,.2);}
+  .orb canvas{width:100%;height:100%;display:block;}
+  .orb--empty{border-style:dashed;border-color:var(--line-strong);color:var(--fog-dim);}
+  .orb-plus{font-family:var(--font-mono);font-size:1.5rem;line-height:1;}
+  .orb--fun{color:var(--amber);}
+  .orb-star{font-size:1.7rem;}
+  .orb-label{font-family:var(--font-mono);font-size:.66rem;letter-spacing:.05em;
+    color:var(--fog-dim);text-align:center;line-height:1.4;}
+  .orb-label em{font-style:normal;color:var(--amber);}
+
+  /* ---------- sections ---------- */
+  .section{padding-block:clamp(56px,9vw,104px);border-top:1px solid var(--line);position:relative;}
+  .stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1px;
+    background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-top:2.2rem;}
+  .stat{background:var(--ink);padding:1.6rem 1.5rem;}
+  .stat .num{font-family:var(--font-display);font-weight:700;font-size:1.9rem;color:var(--cyan);}
+  .stat .lbl{margin-top:.35rem;font-size:.86rem;color:var(--fog);}
+
+  /* mechanism (solution) */
+  .steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1px;
+    background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-top:2.4rem;}
+  .step{background:var(--ink);padding:1.9rem 1.7rem;position:relative;}
+  .step .step-no{font-family:var(--font-mono);font-size:.72rem;color:var(--amber);letter-spacing:.14em;}
+  .step h3{font-size:1.15rem;margin-top:.6rem;color:var(--paper);font-weight:600;font-family:var(--font-body);}
+  .step p{margin-top:.65rem;font-size:.92rem;color:var(--fog);}
+
+  /* proof reasoning */
+  .callout{margin-top:2rem;border-left:2px solid var(--amber);padding-left:1.3rem;color:var(--fog);max-width:640px;}
+
+  /* technical section */
+  .section--wide{background:var(--panel);border-top:1px solid var(--line);border-bottom:1px solid var(--line);}
+  .tech-block{margin-top:3.2rem;}
+  .tech-block:first-of-type{margin-top:2.6rem;}
+  .tech-cap{font-size:.9rem;color:var(--fog);max-width:640px;margin-top:.9rem;}
+  .panel-card{background:var(--ink);border:1px solid var(--line-strong);border-radius:14px;
+    padding:clamp(18px,3vw,30px);overflow:auto;}
+
+  /* crowdsource svg wrapper */
+  .converge-svg{width:100%;height:auto;display:block;}
+
+  /* sql schema */
+  .schema-grid{display:grid;grid-template-columns:1fr auto 1fr;gap:1.4rem;align-items:center;margin-top:1.6rem;}
+  @media (max-width:760px){ .schema-grid{grid-template-columns:1fr;} }
+  .table-card{background:var(--ink);border:1px solid var(--line-strong);border-radius:12px;overflow:hidden;}
+  .table-card header{padding:.9rem 1.1rem;border-bottom:1px solid var(--line);
+    display:flex;align-items:baseline;justify-content:space-between;background:rgba(47,226,204,.05);}
+  .table-card header .t-name{font-family:var(--font-mono);font-weight:500;color:var(--cyan);font-size:.95rem;}
+  .table-card header .t-sub{font-size:.72rem;color:var(--fog-dim);}
+  .table-card .row{display:flex;justify-content:space-between;gap:1rem;padding:.55rem 1.1rem;
+    border-bottom:1px solid var(--line);font-family:var(--font-mono);font-size:.8rem;}
+  .table-card .row:last-child{border-bottom:none;}
+  .table-card .row .f{color:var(--paper);}
+  .table-card .row .k{color:var(--fog-dim);text-align:right;white-space:nowrap;}
+  .rel{text-align:center;color:var(--fog);font-family:var(--font-mono);font-size:.74rem;line-height:1.7;padding:0 .4rem;}
+  .rel .arrows{color:var(--amber);font-size:1.1rem;display:block;margin-bottom:.4rem;}
+  @media (max-width:760px){ .rel{padding:.6rem 0;border-top:1px dashed var(--line-strong);border-bottom:1px dashed var(--line-strong);} }
+  .rls-pill{margin-top:1.3rem;display:inline-flex;align-items:center;gap:.5rem;font-family:var(--font-mono);
+    font-size:.72rem;color:var(--amber);border:1px dashed var(--amber-glow);border-radius:999px;padding:.4rem .85rem;}
+  .rls-pill::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--amber);}
+
+  /* floor chart */
+  .floor-chart-wrap{display:flex;gap:2rem;flex-wrap:wrap;align-items:flex-start;margin-top:1.6rem;}
+  .floor-chart-wrap svg{flex:1 1 420px;min-width:280px;}
+  .const-list{flex:0 1 220px;font-family:var(--font-mono);font-size:.78rem;color:var(--fog);}
+  .const-list div{padding:.4rem 0;border-bottom:1px solid var(--line);}
+  .const-list b{color:var(--paper);}
+
+  /* market */
+  .market-numbers{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.4rem;margin-top:2rem;}
+  .market-card{border:1px solid var(--line-strong);border-radius:14px;padding:1.6rem;background:var(--ink);}
+  .market-card .big{font-family:var(--font-display);font-weight:700;font-size:2.1rem;color:var(--paper);}
+  .market-card .big span{color:var(--cyan);}
+  .market-card .cite{margin-top:.6rem;font-size:.78rem;color:var(--fog-dim);}
+
+  .competitors{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1px;
+    background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-top:1.8rem;}
+  .comp{background:var(--ink);padding:1.6rem 1.5rem;}
+  .comp .name{font-family:var(--font-mono);font-weight:500;color:var(--paper);font-size:.95rem;}
+  .comp .status{display:inline-block;margin:.5rem 0 .7rem;font-family:var(--font-mono);font-size:.68rem;
+    letter-spacing:.06em;text-transform:uppercase;padding:.2rem .55rem;border-radius:999px;
+    background:rgba(245,169,59,.12);color:var(--amber);}
+  .comp p{font-size:.88rem;color:var(--fog);}
+
+  .mon-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.4rem;margin-top:1.8rem;}
+  .mon-card{border:1px solid var(--line-strong);border-radius:14px;padding:1.5rem;}
+  .mon-card h4{font-family:var(--font-body);font-weight:600;font-size:1rem;color:var(--paper);}
+  .mon-card p{margin-top:.5rem;font-size:.88rem;color:var(--fog);}
+
+  /* scale / close */
+  .close-cta{margin-top:2.4rem;display:flex;flex-wrap:wrap;gap:1rem;align-items:center;}
+  .close-line{font-size:1.4rem;font-family:var(--font-display);font-weight:600;color:var(--paper);max-width:680px;}
+  .contact{margin-top:2.6rem;display:flex;flex-wrap:wrap;gap:.9rem;align-items:center;
+    font-family:var(--font-mono);font-size:.85rem;color:var(--fog);}
+  .contact a{border:1px solid var(--cyan-line);color:var(--cyan);text-decoration:none;
+    padding:.6rem 1.1rem;border-radius:999px;}
+  .contact a:hover{background:var(--cyan-glow);}
+
+  footer{padding:2.4rem clamp(20px,5vw,64px);border-top:1px solid var(--line);
+    display:flex;flex-wrap:wrap;gap:.8rem;justify-content:space-between;
+    font-family:var(--font-mono);font-size:.72rem;color:var(--fog-dim);}
+
+  /* ---------- the logo mark ---------- */
+  /* one <symbol>, referenced everywhere. The sprite itself never renders. */
+  .sprite{position:absolute;width:0;height:0;overflow:hidden;}
+  .mark{width:100%;height:100%;display:block;}
+
+  /* hero: the mark, quietly, above the wordmark */
+  .hero-logo{width:38px;height:38px;color:var(--cyan);opacity:.75;margin-bottom:1.2rem;}
+
+  /* ---------- floating stickers ---------- */
+  .sticker{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:2em;height:2em;position:relative;
+    vertical-align:middle;color:var(--cyan);
+  }
+  .sticker--amber{color:var(--amber);}
+  .sticker--float{position:absolute;z-index:4;}
+  .sticker--sm{width:1.7em;height:1.7em;}
+  .sticker--lg{width:2.9em;height:2.9em;}
+  .sticker--xl{width:3.8rem;height:3.8rem;}
+  .sticker svg{width:100%;height:100%;display:block;transform-origin:50% 50%;
+    animation:sticker-spin var(--spin-dur,10s) linear infinite;
+    animation-direction:var(--spin-dir,normal);
+    animation-delay:var(--spin-delay,0s);
+    position:relative; z-index:2;}
+  @keyframes sticker-spin{ to{ transform:rotate(360deg); } }
+
+  /* .sticker--spinfast gets NO css spin animation at all (see the JS spinner
+     below) — a keyframe swap on hover always restarts at its own 0% state,
+     which is exactly the visible "jump" a pure-CSS reverse+accelerate can't
+     avoid. Driving one continuous angle/velocity in JS is the only way to
+     actually reverse direction and ramp speed with no discontinuity. */
+  .sticker--spinfast svg{animation:none;}
+  .sticker--spinfast:hover svg{filter:drop-shadow(0 0 9px currentColor);}
+
+  /* explode: bigger blowout + a shockwave ring, then a sharp snap back together */
+  @keyframes sticker-explode{
+    0%{transform:scale(1) rotate(0deg);opacity:1;filter:blur(0);}
+    30%{transform:scale(2.6) rotate(200deg);opacity:.2;filter:blur(4px);}
+    50%{transform:scale(.1) rotate(260deg);opacity:0;filter:blur(6px);}
+    72%{transform:scale(.1) rotate(300deg);opacity:0;filter:blur(2px);}
+    88%{transform:scale(1.25) rotate(345deg);opacity:1;filter:blur(0);}
+    100%{transform:scale(1) rotate(360deg);opacity:1;filter:blur(0);}
+  }
+  .sticker--explode:hover svg{animation:sticker-explode 1.05s cubic-bezier(.25,.6,.3,1) 1;}
+  .shock{position:absolute;top:50%;left:50%;width:10px;height:10px;border-radius:50%;
+    border:1.5px solid currentColor;opacity:0;pointer-events:none;z-index:1;
+    transform:translate(-50%,-50%) scale(.3);}
+  @keyframes shock-out{
+    0%{opacity:0;transform:translate(-50%,-50%) scale(.3);}
+    28%{opacity:.9;transform:translate(-50%,-50%) scale(1.4);}
+    55%{opacity:.5;}
+    100%{opacity:0;transform:translate(-50%,-50%) scale(6.5);}
+  }
+  .sticker--explode:hover .shock{animation:shock-out .75s ease-out 1;}
+
+  @keyframes sticker-wobble{
+    0%,100%{transform:rotate(0deg);} 25%{transform:rotate(-20deg);} 75%{transform:rotate(20deg);}
+  }
+  .sticker--smoke:hover svg{animation:sticker-wobble .5s ease-in-out 1;}
+  .puff{position:absolute;top:50%;left:50%;width:7px;height:7px;border-radius:50%;
+    background:radial-gradient(circle,rgba(233,241,244,.9),rgba(233,241,244,0) 70%);
+    transform:translate(-50%,-50%) scale(0);opacity:0;pointer-events:none;filter:blur(1px);}
+  @keyframes puff-out{
+    0%{opacity:0;transform:translate(-50%,-50%) scale(.2);}
+    30%{opacity:.8;}
+    100%{opacity:0;transform:translate(-50%,-75%) scale(4.2);}
+  }
+  .sticker--smoke:hover .puff{animation:puff-out .8s ease-out 1;}
+
+  /* spark: bigger, brighter, glowing shooting-star dots that fly well past
+     the icon itself instead of staying tucked against it */
+  .spark{position:absolute;top:50%;left:50%;width:11px;height:11px;border-radius:50%;
+    background:var(--amber);opacity:0;pointer-events:none;z-index:3;
+    box-shadow:0 0 14px 4px rgba(245,169,59,.85);
+    transform:translate(-50%,-50%) rotate(var(--ang)) translateY(0) scale(0);}
+  @keyframes spark-fly{
+    0%{opacity:0;transform:translate(-50%,-50%) rotate(var(--ang)) translateY(0) scale(.3);}
+    16%{opacity:1;transform:translate(-50%,-50%) rotate(var(--ang)) translateY(-10px) scale(2.1);}
+    100%{opacity:0;transform:translate(-50%,-50%) rotate(var(--ang)) translateY(-58px) scale(.5);}
+  }
+  .sticker--spark:hover .spark{animation:spark-fly .8s ease-out 1;}
+  .sticker--spark:hover .spark:nth-of-type(1){animation-delay:0s;}
+  .sticker--spark:hover .spark:nth-of-type(2){animation-delay:.05s;}
+  .sticker--spark:hover .spark:nth-of-type(3){animation-delay:.1s;}
+  .sticker--spark:hover .spark:nth-of-type(4){animation-delay:.15s;}
+  .sticker--spark:hover .spark:nth-of-type(5){animation-delay:.2s;}
+  .sticker--spark:hover .spark:nth-of-type(6){animation-delay:.1s;}
+
+  @media (prefers-reduced-motion:reduce){
+    .sticker svg{animation:none;}
+    .sticker--explode:hover svg,.sticker--smoke:hover svg{animation:none;}
+    .spark,.puff,.shock{display:none;}
+  }
+
+  @media (prefers-reduced-motion:reduce){ html{scroll-behavior:auto;} }
+</style>
+
+<!-- ===================================================================
+     THE LOGO LIVES IN logo.svg — that one file feeds every mark on this
+     page (the floating stickers, the hero, the browser-tab favicon).
+     Replace logo.svg and everything below follows.
+
+     The <symbol> here is only the built-in fallback, used if logo.svg is
+     missing or unreadable. The script at the bottom of the page loads
+     logo.svg and swaps it in.
+     =================================================================== -->
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="logo-mark" viewBox="0 0 24 24"
+          fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="10" stroke-width="1" stroke-dasharray="2 3" opacity=".5"/>
+    <path d="M6 12H17M17 12L12 7M17 12L12 17"/>
+  </symbol>
+</svg>
+
+<div id="progress"></div>
+<nav class="rail" aria-label="Section index">
+  <a href="#s-problem" data-target="s-problem"><span class="dot"></span><span class="label">01 · Problem</span></a>
+  <a href="#s-solution" data-target="s-solution"><span class="dot"></span><span class="label">02 · Solution</span></a>
+  <a href="#s-proof" data-target="s-proof"><span class="dot"></span><span class="label">03 · Proof</span></a>
+  <a href="#s-technical" data-target="s-technical"><span class="dot"></span><span class="label">04 · Under the hood</span></a>
+  <a href="#s-market" data-target="s-market"><span class="dot"></span><span class="label">05 · Market</span></a>
+  <a href="#s-scale" data-target="s-scale"><span class="dot"></span><span class="label">06 · Scale</span></a>
+</nav>
+
+<header class="hero" id="s-hero">
+  <canvas id="hero-canvas" aria-hidden="true"></canvas>
+  <div class="wrap">
+    <div class="hero-logo"><svg class="mark" aria-hidden="true"><use href="#logo-mark"/></svg></div>
+    <div class="hero-tag">Crowdsourced indoor wayfinding</div>
+    <h1>INSID</h1>
+    <p class="hero-sub">Turn-by-turn routes inside buildings, stitched together from the paths people already walk.</p>
+    <a class="hero-scroll" href="#s-problem">See the problem &nbsp;↓</a>
+
+    <div class="hero-orbs">
+      <div class="orb-wrap">
+        <a class="orb" href="#s-technical" aria-label="Raw sample from one recorded walk">
+          <canvas id="orb-raw" width="200" height="200"></canvas>
+        </a>
+        <span class="orb-label">raw sample<br>· recent walks</span>
+      </div>
+      <div class="orb-wrap">
+        <div class="orb orb--empty" aria-hidden="true"><span class="orb-plus">+</span></div>
+        <span class="orb-label">path builder<br><em>· soon</em></span>
+      </div>
+      <div class="orb-wrap">
+        <a class="orb orb--fun" href="fun-facts.html" target="_blank" rel="noopener" aria-label="Behind the scenes">
+          <span class="orb-star">&#10022;</span>
+        </a>
+        <span class="orb-label">behind the<br>scenes</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <section class="section" id="s-problem">
+    <span class="sticker sticker--float sticker--lg sticker--explode" aria-hidden="true" style="top:64px;right:7%;"><span class="shock"></span><svg class="mark"><use href="#logo-mark"/></svg></span>
+    <span class="sticker sticker--float sticker--xl sticker--spinfast sticker--amber" aria-hidden="true" style="bottom:30px;left:4%;"><svg class="mark"><use href="#logo-mark"/></svg></span>
+    <span class="sticker sticker--float sticker--lg sticker--spark" aria-hidden="true" style="top:38%;left:2%;"><svg class="mark"><use href="#logo-mark"/></svg><span class="spark" style="--ang:15deg"></span><span class="spark" style="--ang:75deg"></span><span class="spark" style="--ang:135deg"></span><span class="spark" style="--ang:195deg"></span><span class="spark" style="--ang:255deg"></span><span class="spark" style="--ang:315deg"></span></span>
+    <span class="sticker sticker--float sticker--sm sticker--smoke sticker--amber" aria-hidden="true" style="top:22px;left:42%;"><svg class="mark"><use href="#logo-mark"/></svg><span class="puff"></span></span>
+    <div class="wrap">
+      <div class="eyebrow">01 · The problem</div>
+      <h2 class="section-title">Maps end at the front door.</h2>
+      <div class="prose">
+        <p>It's 15&#176;F and snowing, and the fastest way to your next class is somehow the one route nobody has ever mapped. Turn-by-turn directions handle streets and parking lots without effort; the inside of the building &mdash; which floor, which stairwell, which door actually opens &mdash; is invisible to them.</p>
+        <p>The last serious attempt at solving that was in 2013.</p>
+      </div>
+      <div class="stat-row">
+        <div class="stat"><div class="num">19.4M</div><div class="lbl">students enrolled at U.S. colleges this year</div></div>
+        <div class="stat"><div class="num">0</div><div class="lbl">mainstream apps with indoor routes for academic buildings</div></div>
+        <div class="stat"><div class="num">2013</div><div class="lbl">the year the last indoor-positioning startup got acquired &mdash; and shelved</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="s-solution">
+    <span class="sticker sticker--float sticker--sm sticker--spinfast sticker--amber" aria-hidden="true" style="bottom:36px;left:6%;"><svg class="mark"><use href="#logo-mark"/></svg></span>
+    <span class="sticker sticker--float sticker--xl sticker--explode" aria-hidden="true" style="top:30px;right:4%;"><span class="shock"></span><svg class="mark"><use href="#logo-mark"/></svg></span>
+    <span class="sticker sticker--float sticker--lg sticker--spark" aria-hidden="true" style="bottom:20%;right:10%;"><svg class="mark"><use href="#logo-mark"/></svg><span class="spark" style="--ang:15deg"></span><span class="spark" style="--ang:75deg"></span><span class="spark" style="--ang:135deg"></span><span class="spark" style="--ang:195deg"></span><span class="spark" style="--ang:255deg"></span><span class="spark" style="--ang:315deg"></span></span>
+    <span class="sticker sticker--float sticker--sm sticker--smoke sticker--amber" aria-hidden="true" style="top:50%;left:1%;"><svg class="mark"><use href="#logo-mark"/></svg><span class="puff"></span></span>
+    <div class="wrap">
+      <div class="eyebrow">02 · The solution</div>
+      <h2 class="section-title">Insid</h2>
+      <div class="prose"><p>One walk becomes the map for everyone who follows it.</p></div>
+      <div class="steps">
+        <div class="step">
+          <div class="step-no mono">STEP 1</div>
+          <h3>Record</h3>
+          <p>A phone's motion tracking and barometer log a 3D path as someone walks: position, elevation, and floor &mdash; off hardware already in every pocket, with no beacons to install.</p>
+        </div>
+        <div class="step">
+          <div class="step-no mono">STEP 2</div>
+          <h3>Align</h3>
+          <p>Each walk locks onto the shared map through two known reference points, not a compass reading. Indoor magnetic fields bend by tens of degrees near rebar and elevator shafts &mdash; so the pipeline never asks for a heading it can't trust.</p>
+        </div>
+        <div class="step">
+          <div class="step-no mono">STEP 3</div>
+          <h3>Route</h3>
+          <p>Overlapping walks merge into one routing graph. Shortest-path search runs across it &mdash; across floors, across buildings &mdash; the same way it runs across streets.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="s-proof">
+    <span class="sticker sticker--float sticker--xl sticker--spark" aria-hidden="true" style="top:38%;right:5%;"><svg class="mark"><use href="#logo-mark"/></svg><span class="spark" style="--ang:15deg"></span><span class="spark" style="--ang:75deg"></span><span class="spark" style="--ang:135deg"></span><span class="spark" style="--ang:195deg"></span><span class="spark" style="--ang:255deg"></span><span class="spark" style="--ang:315deg"></span></span>
+    <span class="sticker sticker--float sticker--lg sticker--explode sticker--amber" aria-hidden="true" style="top:14px;left:8%;"><span class="shock"></span><svg class="mark"><use href="#logo-mark"/></svg></span>
+    <span class="sticker sticker--float sticker--xl sticker--spinfast" aria-hidden="true" style="bottom:24px;right:22%;"><svg class="mark"><use href="#logo-mark"/></svg></span>
+    <span class="sticker sticker--float sticker--sm sticker--smoke" aria-hidden="true" style="bottom:10%;left:6%;"><svg class="mark"><use href="#logo-mark"/></svg><span class="puff"></span></span>
+    <div class="wrap">
+      <div class="eyebrow">03 · Proof</div>
+      <h2 class="section-title">Five buildings. One setup pass.</h2>
+      <div class="stat-row">
+        <div class="stat"><div class="num">5</div><div class="lbl">buildings mapped &mdash; Hamerschlag, Roberts, Wean, Gates&ndash;Hillman, Newell&ndash;Simon</div></div>
+        <div class="stat"><div class="num">&lt;60<span style="font-size:1rem;">min</span></div><div class="lbl">from empty map to a routable graph</div></div>
+        <div class="stat"><div class="num">0.3&ndash;1<span style="font-size:1rem;">m</span></div><div class="lbl">floor-level accuracy, from barometric pressure alone</div></div>
+      </div>
+      <div class="callout">
+        <p>The value compounds with bad weather instead of against it &mdash; sub-zero wind chill, a downpour, a package that can't get wet, a route that needs the elevator marked instead of assumed. None of it requires new infrastructure inside the building. It requires someone to have walked it once.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--wide" id="s-technical">
+    <span class="sticker sticker--float sticker--sm sticker--smoke sticker--amber" aria-hidden="true" style="top:210px;left:4%;"><svg class="mark"><use href="#logo-mark"/></svg><span class="puff"></span></span>
+    <span class="sticker sticker--float sticker--lg sticker--explode" aria-hidden="true" style="top:60px;right:5%;"><span class="shock"></span><svg class="mark"><use href="#logo-mark"/></svg></span>
+    <span class="sticker sticker--float sticker--xl sticker--spinfast sticker--amber" aria-hidden="true" style="bottom:120px;left:8%;"><svg class="mark"><use href="#logo-mark"/></svg></span>
+    <span class="sticker sticker--float sticker--lg sticker--spark" aria-hidden="true" style="bottom:40px;right:12%;"><svg class="mark"><use href="#logo-mark"/></svg><span class="spark" style="--ang:15deg"></span><span class="spark" style="--ang:75deg"></span><span class="spark" style="--ang:135deg"></span><span class="spark" style="--ang:195deg"></span><span class="spark" style="--ang:255deg"></span><span class="spark" style="--ang:315deg"></span></span>
+    <div class="wrap">
+      <div class="eyebrow">04 · Under the hood</div>
+      <h2 class="section-title">Record raw. Align later.</h2>
+      <div class="prose"><p>Every layer of the pipeline can be swapped without asking anyone to walk the building again &mdash; the recorder never assumes which alignment strategy will win.</p></div>
+
+      <div class="tech-block">
+        <h3 style="font-size:1.05rem;font-family:var(--font-body);font-weight:600;">Crowdsourcing, visually</h3>
+        <p class="tech-cap">Three people, three walks down the same hallway. Independently noisy on their own; pulled into one shared frame once each is anchored.</p>
+        <div class="panel-card" style="margin-top:1.1rem;">
+          <svg class="converge-svg" viewBox="0 0 600 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Three noisy walk traces converging into one aligned corridor">
+            <line x1="20" y1="110" x2="580" y2="110" stroke="var(--line)" stroke-width="1"/>
+            <path fill="none" stroke="var(--cyan)" stroke-width="2" opacity="0.55"
+              d="M20,150 C100,190 170,110 240,160 S 400,80 470,150 S 560,100 580,130">
+              <animate attributeName="d" dur="12s" begin="-1.5s" repeatCount="indefinite"
+                calcMode="spline" keyTimes="0;0.5;1" keySplines="0.4 0 0.2 1;0.4 0 0.2 1"
+                values="M20,150 C100,190 170,110 240,160 S 400,80 470,150 S 560,100 580,130;
+                        M20,112 C120,104 220,118 300,110 S 460,106 520,112 S 570,110 580,114;
+                        M20,150 C100,190 170,110 240,160 S 400,80 470,150 S 560,100 580,130"/>
+            </path>
+            <path fill="none" stroke="var(--cyan)" stroke-width="2" opacity="0.85"
+              d="M20,120 C90,60 150,170 230,90 S 380,150 460,70 S 560,140 580,110">
+              <animate attributeName="d" dur="12s" begin="0s" repeatCount="indefinite"
+                calcMode="spline" keyTimes="0;0.5;1" keySplines="0.4 0 0.2 1;0.4 0 0.2 1"
+                values="M20,120 C90,60 150,170 230,90 S 380,150 460,70 S 560,140 580,110;
+                        M20,108 C120,98 220,112 300,104 S 460,100 520,106 S 570,104 580,108;
+                        M20,120 C90,60 150,170 230,90 S 380,150 460,70 S 560,140 580,110"/>
+            </path>
+            <path fill="none" stroke="var(--amber)" stroke-width="2" opacity="0.6"
+              d="M20,90 C110,40 160,150 250,60 S 390,170 460,50 S 555,160 580,90">
+              <animate attributeName="d" dur="12s" begin="-3s" repeatCount="indefinite"
+                calcMode="spline" keyTimes="0;0.5;1" keySplines="0.4 0 0.2 1;0.4 0 0.2 1"
+                values="M20,90 C110,40 160,150 250,60 S 390,170 460,50 S 555,160 580,90;
+                        M20,116 C120,108 220,122 300,114 S 460,110 520,116 S 570,114 580,118;
+                        M20,90 C110,40 160,150 250,60 S 390,170 460,50 S 555,160 580,90"/>
+            </path>
+            <g fill="var(--cyan)">
+              <circle cx="140" cy="106" r="4"><animate attributeName="opacity" dur="12s" repeatCount="indefinite" keyTimes="0;0.35;0.5;0.65;1" values="0;0;1;1;0"/></circle>
+              <circle cx="260" cy="112" r="4"><animate attributeName="opacity" dur="12s" repeatCount="indefinite" keyTimes="0;0.35;0.5;0.65;1" values="0;0;1;1;0"/></circle>
+              <circle cx="380" cy="108" r="4"><animate attributeName="opacity" dur="12s" repeatCount="indefinite" keyTimes="0;0.35;0.5;0.65;1" values="0;0;1;1;0"/></circle>
+              <circle cx="500" cy="110" r="4"><animate attributeName="opacity" dur="12s" repeatCount="indefinite" keyTimes="0;0.35;0.5;0.65;1" values="0;0;1;1;0"/></circle>
+            </g>
+            <text x="20" y="204" fill="var(--fog-dim)" font-family="IBM Plex Mono, monospace" font-size="11">raw walks</text>
+            <text x="470" y="204" fill="var(--fog-dim)" font-family="IBM Plex Mono, monospace" font-size="11">merged graph</text>
+          </svg>
+        </div>
+      </div>
+
+      <div class="tech-block">
+        <h3 style="font-size:1.05rem;font-family:var(--font-body);font-weight:600;">Two tables. Every route comes out of them.</h3>
+        <p class="tech-cap">Postgres via Supabase. <span class="mono">nodes</span> is the shared registry; <span class="mono">walks</span> is one row per recorded path, points stored as ordered JSON.</p>
+        <div class="schema-grid">
+          <div class="table-card">
+            <header><span class="t-name">nodes</span><span class="t-sub">building-local registry</span></header>
+            <div class="row"><span class="f">id</span><span class="k">text · PK</span></div>
+            <div class="row"><span class="f">name</span><span class="k">text</span></div>
+            <div class="row"><span class="f">floor</span><span class="k">int</span></div>
+            <div class="row"><span class="f">x, y, z</span><span class="k">double precision · m, y=up</span></div>
+            <div class="row"><span class="f">lat, lon</span><span class="k">double precision · null until georeferenced</span></div>
+          </div>
+          <div class="rel">
+            <span class="arrows">&#8646;</span>
+            start_node_id<br>orient_node_id<br>end_node_id &#8594; nodes.id
+          </div>
+          <div class="table-card">
+            <header><span class="t-name">walks</span><span class="t-sub">one row per recorded path</span></header>
+            <div class="row"><span class="f">id</span><span class="k">text · PK</span></div>
+            <div class="row"><span class="f">recorded_at</span><span class="k">timestamptz</span></div>
+            <div class="row"><span class="f">device</span><span class="k">text</span></div>
+            <div class="row"><span class="f">start / orient / end_node_id</span><span class="k">text · anchors</span></div>
+            <div class="row"><span class="f">baro_reference</span><span class="k">double precision · kPa</span></div>
+            <div class="row"><span class="f">points</span><span class="k">jsonb · {t,x,y,z,pressure,relAltitude}</span></div>
+            <div class="row"><span class="f">created_at</span><span class="k">timestamptz · default now()</span></div>
+          </div>
+        </div>
+        <div class="rls-pill">anon insert on walks · anon select on both &mdash; hackathon-stage RLS, tightened pre-launch</div>
+      </div>
+
+      <div class="tech-block">
+        <h3 style="font-size:1.05rem;font-family:var(--font-body);font-weight:600;">Floors are pressure, not GPS</h3>
+        <p class="tech-cap">Floors show up as density peaks in barometric altitude &mdash; people dwell on a floor and only pass quickly through the gap between two of them, so a histogram of samples finds floors even through a continuous stairwell ramp.</p>
+        <div class="floor-chart-wrap">
+          <svg viewBox="0 0 600 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Barometric altitude over time showing three floor plateaus">
+            <line x1="56" y1="194" x2="580" y2="194" stroke="var(--line-strong)" stroke-width="1" stroke-dasharray="3 4"/>
+            <line x1="56" y1="110" x2="580" y2="110" stroke="var(--line-strong)" stroke-width="1" stroke-dasharray="3 4"/>
+            <line x1="56" y1="25"  x2="580" y2="25"  stroke="var(--line-strong)" stroke-width="1" stroke-dasharray="3 4"/>
+            <text x="52" y="190" text-anchor="end" fill="var(--fog)" font-family="IBM Plex Mono, monospace" font-size="10">Floor 0 · 0.0m</text>
+            <text x="52" y="106" text-anchor="end" fill="var(--fog)" font-family="IBM Plex Mono, monospace" font-size="10">Floor 1 · 3.6m</text>
+            <text x="52" y="21"  text-anchor="end" fill="var(--fog)" font-family="IBM Plex Mono, monospace" font-size="10">Floor 2 · 7.2m</text>
+            <polyline fill="none" stroke="var(--cyan)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"
+              points="56,194 104,193 153,195 193,192 217,166 233,133 250,111 298,109 354,110 411,110 427,86 443,53 459,26 516,25 572,26"/>
+            <g fill="var(--amber)">
+              <circle cx="217" cy="166" r="3"/><circle cx="427" cy="86" r="3"/>
+            </g>
+            <text x="217" y="152" fill="var(--fog-dim)" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle">stairwell</text>
+            <text x="427" y="72"  fill="var(--fog-dim)" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle">stairwell</text>
+            <text x="56" y="228" fill="var(--fog-dim)" font-family="IBM Plex Mono, monospace" font-size="10">0</text>
+            <text x="217" y="228" fill="var(--fog-dim)" font-family="IBM Plex Mono, monospace" font-size="10">40</text>
+            <text x="378" y="228" fill="var(--fog-dim)" font-family="IBM Plex Mono, monospace" font-size="10">80</text>
+            <text x="540" y="228" fill="var(--fog-dim)" font-family="IBM Plex Mono, monospace" font-size="10">120</text>
+            <text x="580" y="228" fill="var(--fog-dim)" font-family="IBM Plex Mono, monospace" font-size="10" text-anchor="end">t (s)</text>
+          </svg>
+          <div class="const-list">
+            <div><b>binSize</b> &nbsp;0.5 m &nbsp;<span style="color:var(--fog-dim)">histogram resolution</span></div>
+            <div><b>minGap</b> &nbsp;2.5 m &nbsp;<span style="color:var(--fog-dim)">min. floor separation</span></div>
+            <div><b>densityFrac</b> &nbsp;8% &nbsp;<span style="color:var(--fog-dim)">of peak, to seed a floor</span></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <section class="section" id="s-market">
+    <span class="sticker sticker--float sticker--spinfast" aria-hidden="true" style="bottom:26px;right:9%;"><svg class="mark"><use href="#logo-mark"/></svg></span>
+    <span class="sticker sticker--float sticker--xl sticker--explode sticker--amber" aria-hidden="true" style="top:40px;left:5%;"><span class="shock"></span><svg class="mark"><use href="#logo-mark"/></svg></span>
+    <span class="sticker sticker--float sticker--lg sticker--spark" aria-hidden="true" style="top:45%;left:2%;"><svg class="mark"><use href="#logo-mark"/></svg><span class="spark" style="--ang:15deg"></span><span class="spark" style="--ang:75deg"></span><span class="spark" style="--ang:135deg"></span><span class="spark" style="--ang:195deg"></span><span class="spark" style="--ang:255deg"></span><span class="spark" style="--ang:315deg"></span></span>
+    <span class="sticker sticker--float sticker--sm sticker--smoke" aria-hidden="true" style="bottom:60px;right:30%;"><svg class="mark"><use href="#logo-mark"/></svg><span class="puff"></span></span>
+    <div class="wrap">
+      <div class="eyebrow">05 · Market &amp; competition</div>
+      <h2 class="section-title">Counted in the billions. We're counting campuses.</h2>
+      <div class="market-numbers">
+        <div class="market-card">
+          <div class="big"><span>$42&ndash;58B</span></div>
+          <div class="lbl" style="color:var(--fog);font-size:.9rem;margin-top:.3rem;">global indoor positioning &amp; navigation market, 2025&ndash;26, compounding near 35%/yr by one widely-cited estimate</div>
+          <div class="cite">Fortune Business Insights, 2026</div>
+        </div>
+        <div class="market-card">
+          <div class="big"><span>19.4M</span> / <span>~4,000</span></div>
+          <div class="lbl" style="color:var(--fog);font-size:.9rem;margin-top:.3rem;">students enrolled across roughly 4,000 U.S. degree-granting campuses &mdash; the actual go-to-market unit, sold one campus at a time</div>
+          <div class="cite">NCES / Statista enrollment aggregates, fall 2025</div>
+        </div>
+      </div>
+
+      <div class="competitors">
+        <div class="comp">
+          <div class="name">Google Indoor Maps</div>
+          <div class="status">Live, elsewhere</div>
+          <p>Covers select airports, malls, and stadiums. No coverage &mdash; and no announced plan for coverage &mdash; of college academic buildings.</p>
+        </div>
+        <div class="comp">
+          <div class="name">WifiSlam</div>
+          <div class="status">Shelved</div>
+          <p>Acquired by Apple for roughly $20M in 2013. Wi-Fi + inertial positioning, ~2.5m accuracy claimed. Folded into Apple's internal mapping work and never shipped as a standalone indoor-navigation product.</p>
+        </div>
+      </div>
+
+      <div class="mon-row">
+        <div class="mon-card">
+          <h4>Ads, kept small on purpose</h4>
+          <p>A wayfinding app doesn't need an aggressive ad load per user when usage is this frequent &mdash; every building, most days, for four years.</p>
+        </div>
+        <div class="mon-card">
+          <h4>Campus licensing</h4>
+          <p>A second line worth testing: direct licensing to facilities and accessibility offices, who already fund ADA-compliant wayfinding today.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="s-scale">
+    <span class="sticker sticker--float sticker--lg sticker--explode sticker--amber" aria-hidden="true" style="top:48px;left:6%;"><span class="shock"></span><svg class="mark"><use href="#logo-mark"/></svg></span>
+    <span class="sticker sticker--float sticker--xl sticker--spinfast" aria-hidden="true" style="bottom:50px;right:6%;"><svg class="mark"><use href="#logo-mark"/></svg></span>
+    <span class="sticker sticker--float sticker--lg sticker--spark" aria-hidden="true" style="top:20%;right:3%;"><svg class="mark"><use href="#logo-mark"/></svg><span class="spark" style="--ang:15deg"></span><span class="spark" style="--ang:75deg"></span><span class="spark" style="--ang:135deg"></span><span class="spark" style="--ang:195deg"></span><span class="spark" style="--ang:255deg"></span><span class="spark" style="--ang:315deg"></span></span>
+    <span class="sticker sticker--float sticker--sm sticker--smoke sticker--amber" aria-hidden="true" style="bottom:16px;left:40%;"><svg class="mark"><use href="#logo-mark"/></svg><span class="puff"></span></span>
+    <div class="wrap">
+      <div class="eyebrow">06 · Scale</div>
+      <h2 class="section-title">Every campus is the same problem, in a different building.</h2>
+      <div class="prose">
+        <p>The pipeline doesn't know it's mapping Carnegie Mellon. It knows floors, nodes, and walks. Pointing it at a new campus is the same steps that produced the first five buildings: seed the node registry, walk the halls once, let the graph merge &mdash; no new hardware, no facilities partnership required to start.</p>
+      </div>
+      <div class="close-cta">
+        <div class="close-line">The outside of every building is already mapped. Insid maps the inside &mdash; one walk at a time.</div>
+      </div>
+      <div class="contact">
+        <span>Interested in the pipeline, the data, or the pilot?</span>
+        <a href="mailto:hello@insid.app">hello@insid.app &nbsp;&#8594;</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <span>INSID &mdash; crowdsourced indoor wayfinding</span>
+  <span>Carnegie Mellon &middot; 2026</span>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------------- scroll progress + rail highlighting ---------------- */
+  var progress = document.getElementById('progress');
+  function onScroll(){
+    var h = document.documentElement;
+    var scrolled = h.scrollTop;
+    var height = h.scrollHeight - h.clientHeight;
+    progress.style.width = (height > 0 ? (scrolled/height)*100 : 0) + '%';
+  }
+  document.addEventListener('scroll', onScroll, {passive:true});
+  onScroll();
+
+  var railLinks = Array.prototype.slice.call(document.querySelectorAll('.rail a'));
+  var sections = railLinks.map(function(a){ return document.getElementById(a.dataset.target); }).filter(Boolean);
+  if ('IntersectionObserver' in window && sections.length){
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        var link = railLinks.find(function(a){ return a.dataset.target === e.target.id; });
+        if (!link) return;
+        if (e.isIntersecting) railLinks.forEach(function(a){ a.classList.remove('active'); });
+        if (e.isIntersecting) link.classList.add('active');
+      });
+    }, {rootMargin:'-45% 0px -45% 0px', threshold:0});
+    sections.forEach(function(s){ io.observe(s); });
+  }
+
+  /* ---------------- hero: four real recorded walks, raw -> anchored ---------------- */
+  // Real, decimated 3D traces from four recorded walks (web/data/walk-*.json),
+  // normalized jointly so their relative shape/position/floor separation stays
+  // honest (two of these walks really do climb between floors; two are flat
+  // single-floor corridors — that's the actual data, not staged for variety).
+  // "raw" is what ARKit recorded; "resolved" is the same walk lightly smoothed
+  // and floor-snapped — a small, honest stand-in for what the real pipeline
+  // (node-anchor.js + floors.js) does downstream.
+  var canvas = document.getElementById('hero-canvas');
+  var ctx = canvas.getContext('2d');
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var RAW_WALKS = [
+    [[0.845,0.977,-0.867],[0.842,0.976,-0.83],[0.834,1,-0.751],[0.845,0.968,-0.684],[0.849,0.958,-0.6],[0.855,0.957,-0.514],[0.851,0.964,-0.428],[0.846,0.967,-0.343],[0.841,0.961,-0.261],[0.836,0.958,-0.177],[0.828,0.95,-0.088],[0.813,0.945,-0.001],[0.803,0.954,0.08],[0.799,0.955,0.159],[0.81,0.959,0.235],[0.854,0.964,0.285],[0.92,0.961,0.302],[0.986,0.96,0.28],[1.03,0.966,0.234],[1.044,0.9,0.193],[1.048,0.809,0.148],[1.054,0.738,0.11],[1.055,0.659,0.069],[1.061,0.575,0.025],[1.102,0.549,-0.014],[1.141,0.546,0.016],[1.146,0.51,0.059],[1.15,0.418,0.101],[1.145,0.337,0.145],[1.137,0.258,0.189],[1.125,0.165,0.23],[1.103,0.096,0.275],[1.057,0.091,0.29],[1.023,0.094,0.261],[1.016,0.073,0.212],[1.03,-0.016,0.172],[1.037,-0.087,0.138],[1.039,-0.165,0.103],[1.038,-0.238,0.066],[1.036,-0.307,0.029],[1.069,-0.336,-0.017],[1.124,-0.334,-0.008],[1.145,-0.329,0.033],[1.145,-0.394,0.068],[1.146,-0.474,0.106],[1.142,-0.555,0.144],[1.141,-0.62,0.177],[1.139,-0.676,0.208],[1.13,-0.733,0.242],[1.113,-0.789,0.293],[1.067,-0.788,0.323],[1.007,-0.787,0.326],[0.946,-0.788,0.31],[0.88,-0.794,0.298],[0.814,-0.786,0.282],[0.745,-0.79,0.26],[0.674,-0.787,0.229],[0.597,-0.784,0.204],[0.513,-0.779,0.187],[0.434,-0.787,0.16],[0.357,-0.785,0.142],[0.274,-0.771,0.13],[0.201,-0.774,0.126],[0.129,-0.772,0.127],[0.051,-0.771,0.131],[-0.017,-0.768,0.155],[-0.049,-0.767,0.194],[-0.052,-0.771,0.205],[-0.056,-0.775,0.214],[-0.077,-0.776,0.274],[-0.091,-0.768,0.309],[-0.123,-0.767,0.344],[-0.145,-0.765,0.393],[-0.152,-0.761,0.459],[-0.159,-0.758,0.525]],
+    [[-0.605,-0.734,0.648],[-0.64,-0.741,0.638],[-0.695,-0.744,0.626],[-0.745,-0.748,0.587],[-0.776,-0.752,0.522],[-0.786,-0.745,0.454],[-0.787,-0.745,0.391],[-0.778,-0.71,0.339],[-0.779,-0.733,0.29],[-0.778,-0.744,0.234],[-0.773,-0.728,0.188],[-0.775,-0.736,0.158],[-0.776,-0.742,0.133],[-0.771,-0.737,0.093],[-0.731,-0.74,0.057],[-0.67,-0.734,0.043],[-0.594,-0.724,0.047],[-0.523,-0.731,0.056],[-0.447,-0.723,0.067],[-0.365,-0.721,0.076],[-0.285,-0.73,0.084],[-0.208,-0.729,0.095],[-0.124,-0.73,0.109],[-0.043,-0.73,0.121],[0.033,-0.722,0.129],[0.121,-0.729,0.136],[0.206,-0.74,0.147],[0.285,-0.724,0.162],[0.366,-0.724,0.18],[0.444,-0.727,0.191],[0.521,-0.714,0.202],[0.594,-0.731,0.215],[0.641,-0.713,0.264],[0.709,-0.711,0.273],[0.774,-0.717,0.28],[0.846,-0.713,0.287],[0.914,-0.72,0.297],[0.977,-0.711,0.308],[1.042,-0.719,0.309],[1.092,-0.711,0.29],[1.124,-0.714,0.246],[1.139,-0.633,0.196],[1.15,-0.517,0.134],[1.148,-0.384,0.07],[1.131,-0.25,0.02],[1.089,-0.251,0.007],[1.049,-0.273,0.043],[1.027,-0.15,0.107],[1.019,-0.024,0.171],[1.015,0.104,0.235],[1.006,0.171,0.282],[0.973,0.174,0.316],[0.915,0.156,0.323],[0.858,0.167,0.297],[0.816,0.17,0.247],[0.804,0.169,0.187],[0.797,0.163,0.126],[0.799,0.154,0.06],[0.803,0.157,-0.005],[0.813,0.157,-0.072],[0.824,0.148,-0.136],[0.832,0.164,-0.205],[0.839,0.157,-0.276],[0.844,0.168,-0.349],[0.848,0.16,-0.42],[0.851,0.159,-0.488],[0.857,0.163,-0.558],[0.857,0.157,-0.632],[0.858,0.167,-0.698],[0.853,0.17,-0.769],[0.848,0.176,-0.825],[0.846,0.174,-0.879],[0.853,0.18,-0.921],[0.875,0.179,-0.94]],
+    [[-0.673,-0.952,0.898],[-0.664,-0.963,0.89],[-0.636,-0.964,0.87],[-0.6,-0.954,0.846],[-0.56,-0.953,0.823],[-0.518,-0.955,0.799],[-0.469,-0.957,0.784],[-0.417,-0.946,0.771],[-0.366,-0.942,0.754],[-0.317,-0.958,0.728],[-0.29,-0.96,0.684],[-0.286,-0.961,0.638],[-0.294,-0.946,0.591],[-0.31,-0.945,0.544],[-0.332,-0.951,0.492],[-0.355,-0.972,0.342],[-0.383,-0.973,0.295],[-0.413,-0.964,0.253],[-0.441,-0.96,0.215],[-0.447,-0.965,0.193],[-0.448,-0.971,0.172],[-0.455,-0.963,0.142],[-0.486,-0.974,0.118],[-0.53,-0.958,0.112],[-0.582,-0.96,0.125],[-0.631,-0.949,0.134],[-0.681,-0.951,0.148],[-0.734,-0.968,0.161],[-0.793,-0.967,0.18],[-0.849,-0.964,0.2],[-0.905,-0.965,0.22],[-0.961,-0.971,0.242],[-1.011,-0.98,0.272],[-1.06,-0.976,0.303],[-1.096,-0.969,0.343],[-1.121,-0.976,0.383],[-1.137,-0.967,0.423],[-1.143,-0.974,0.444],[-1.146,-0.983,0.446],[-1.14,-0.976,0.447],[-1.131,-0.974,0.445],[-1.129,-0.979,0.444],[-1.135,-0.981,0.448],[-1.144,-0.98,0.445],[-1.144,-0.978,0.441],[-1.135,-0.975,0.444],[-1.127,-0.978,0.441],[-1.119,-0.981,0.447],[-1.115,-0.975,0.451],[-1.114,-0.975,0.452],[-1.114,-0.975,0.452],[-1.118,-0.977,0.446],[-1.123,-0.971,0.431],[-1.135,-0.971,0.42],[-1.139,-0.969,0.411],[-1.143,-0.971,0.411],[-1.143,-0.972,0.411],[-1.14,-0.972,0.412],[-1.136,-0.973,0.411],[-1.135,-0.972,0.409],[-1.14,-0.973,0.411],[-1.148,-0.979,0.416],[-1.15,-0.974,0.429],[-1.146,-0.97,0.44],[-1.138,-0.967,0.441],[-1.115,-0.977,0.454],[-1.092,-0.969,0.49],[-1.073,-0.97,0.533],[-1.057,-0.984,0.575],[-1.036,-0.986,0.622],[-1.015,-0.983,0.664],[-0.997,-0.984,0.707],[-0.973,-0.981,0.745],[-0.942,-0.988,0.775],[-0.908,-0.993,0.804],[-0.866,-1,0.821],[-0.827,-0.999,0.834],[-0.784,-0.992,0.831],[-0.745,-0.994,0.822],[-0.709,-0.994,0.817],[-0.676,-0.999,0.83],[-0.652,-0.999,0.854]],
+    [[-0.654,-0.929,0.936],[-0.697,-0.938,0.94],[-0.75,-0.932,0.931],[-0.795,-0.938,0.909],[-0.834,-0.95,0.891],[-0.872,-0.93,0.878],[-0.881,-0.926,0.884],[-0.888,-0.93,0.884],[-0.887,-0.932,0.885],[-0.887,-0.931,0.884],[-0.886,-0.931,0.884],[-0.885,-0.93,0.883],[-0.886,-0.93,0.884],[-0.886,-0.932,0.884],[-0.887,-0.933,0.885],[-0.888,-0.931,0.885],[-0.888,-0.93,0.886],[-0.888,-0.931,0.887],[-0.889,-0.931,0.887],[-0.888,-0.93,0.886],[-0.888,-0.929,0.886],[-0.888,-0.929,0.886],[-0.888,-0.93,0.887],[-0.889,-0.93,0.887],[-0.903,-0.929,0.88],[-0.926,-0.946,0.873],[-0.957,-0.931,0.865],[-0.973,-0.934,0.86],[-1.014,-0.936,0.85],[-1.036,-0.942,0.79],[-1.019,-0.928,0.722],[-0.993,-0.922,0.658],[-0.969,-0.923,0.596],[-0.941,-0.913,0.534],[-0.911,-0.928,0.469],[-0.879,-0.923,0.41],[-0.843,-0.921,0.351],[-0.813,-0.926,0.293],[-0.78,-0.918,0.243],[-0.743,-0.92,0.214],[-0.73,-0.922,0.211],[-0.726,-0.916,0.232],[-0.721,-0.912,0.238],[-0.722,-0.911,0.237],[-0.725,-0.917,0.233],[-0.727,-0.918,0.235],[-0.727,-0.915,0.235],[-0.729,-0.915,0.237],[-0.73,-0.917,0.236],[-0.73,-0.918,0.237],[-0.73,-0.919,0.238],[-0.731,-0.919,0.238],[-0.736,-0.921,0.235],[-0.734,-0.922,0.234],[-0.738,-0.922,0.232],[-0.757,-0.925,0.221],[-0.759,-0.921,0.201],[-0.747,-0.927,0.199],[-0.736,-0.923,0.207],[-0.727,-0.912,0.207],[-0.725,-0.919,0.209],[-0.728,-0.911,0.21],[-0.725,-0.919,0.239],[-0.691,-0.92,0.254],[-0.632,-0.93,0.259],[-0.568,-0.925,0.272],[-0.505,-0.927,0.291],[-0.44,-0.926,0.314],[-0.381,-0.935,0.337],[-0.327,-0.933,0.369],[-0.305,-0.944,0.422],[-0.312,-0.928,0.481],[-0.34,-0.914,0.542],[-0.37,-0.921,0.598],[-0.395,-0.919,0.656],[-0.41,-0.923,0.715],[-0.418,-0.925,0.772]]
+  ];
+  var RESOLVED_WALKS = [
+    [[0.84,-0.011,-0.816],[0.842,-0.011,-0.783],[0.843,-0.011,-0.746],[0.845,-0.011,-0.676],[0.847,-0.011,-0.596],[0.849,-0.011,-0.514],[0.849,-0.011,-0.429],[0.846,-0.011,-0.345],[0.841,-0.011,-0.26],[0.833,-0.011,-0.174],[0.825,-0.011,-0.09],[0.816,-0.011,-0.006],[0.811,-0.011,0.077],[0.816,-0.011,0.151],[0.837,-0.011,0.212],[0.874,-0.011,0.252],[0.92,-0.011,0.267],[0.967,-0.011,0.259],[1.006,-0.011,0.232],[1.033,-0.011,0.193],[1.046,-0.011,0.151],[1.053,-0.011,0.109],[1.064,-0.011,0.068],[1.083,-0.011,0.041],[1.101,-0.011,0.031],[1.12,-0.011,0.037],[1.137,-0.011,0.061],[1.144,-0.011,0.102],[1.141,-0.011,0.145],[1.132,-0.011,0.188],[1.113,-0.011,0.226],[1.089,-0.011,0.249],[1.065,-0.011,0.254],[1.046,-0.011,0.242],[1.033,-0.011,0.215],[1.029,-0.011,0.177],[1.032,-0.011,0.138],[1.036,-0.011,0.102],[1.044,-0.011,0.064],[1.061,-0.011,0.035],[1.082,-0.011,0.021],[1.104,-0.011,0.021],[1.126,-0.011,0.037],[1.14,-0.011,0.069],[1.144,-0.011,0.106],[1.142,-0.011,0.141],[1.139,-0.011,0.175],[1.133,-0.011,0.213],[1.118,-0.011,0.248],[1.091,-0.011,0.278],[1.052,-0.011,0.299],[1.003,-0.011,0.31],[0.943,-0.011,0.308],[0.879,-0.011,0.295],[0.812,-0.011,0.276],[0.742,-0.011,0.255],[0.669,-0.011,0.232],[0.593,-0.011,0.208],[0.515,-0.011,0.184],[0.435,-0.011,0.164],[0.356,-0.011,0.149],[0.279,-0.011,0.137],[0.203,-0.011,0.131],[0.128,-0.011,0.134],[0.063,-0.011,0.147],[0.013,-0.011,0.162],[-0.024,-0.011,0.18],[-0.05,-0.011,0.208],[-0.065,-0.011,0.239],[-0.08,-0.011,0.269],[-0.099,-0.011,0.307],[-0.118,-0.011,0.356],[-0.134,-0.011,0.406],[-0.145,-0.011,0.43],[-0.152,-0.011,0.459]],
+    [[-0.647,-0.729,0.637],[-0.671,-0.729,0.625],[-0.692,-0.729,0.604],[-0.728,-0.729,0.566],[-0.758,-0.729,0.516],[-0.774,-0.729,0.459],[-0.781,-0.729,0.399],[-0.782,-0.729,0.341],[-0.779,-0.729,0.288],[-0.777,-0.729,0.242],[-0.776,-0.729,0.2],[-0.774,-0.729,0.161],[-0.765,-0.729,0.126],[-0.745,-0.729,0.097],[-0.708,-0.729,0.075],[-0.658,-0.729,0.059],[-0.593,-0.729,0.054],[-0.52,-0.729,0.058],[-0.443,-0.729,0.066],[-0.366,-0.729,0.075],[-0.286,-0.729,0.086],[-0.205,-0.729,0.097],[-0.126,-0.729,0.108],[-0.044,-0.729,0.118],[0.038,-0.729,0.128],[0.12,-0.729,0.139],[0.202,-0.729,0.151],[0.284,-0.729,0.163],[0.364,-0.729,0.177],[0.442,-0.729,0.19],[0.513,-0.729,0.21],[0.582,-0.729,0.229],[0.648,-0.729,0.247],[0.713,-0.729,0.264],[0.777,-0.729,0.28],[0.844,-0.729,0.289],[0.911,-0.729,0.296],[0.974,-0.729,0.298],[1.03,-0.729,0.29],[1.075,-0.729,0.27],[1.109,-0.729,0.235],[1.131,-0.729,0.187],[1.138,-0.729,0.133],[1.131,-0.729,0.086],[1.113,0.162,0.055],[1.089,0.162,0.05],[1.063,0.162,0.07],[1.04,0.162,0.113],[1.023,0.162,0.168],[1.008,0.162,0.222],[0.986,0.162,0.265],[0.954,0.162,0.291],[0.914,0.162,0.293],[0.873,0.162,0.274],[0.838,0.162,0.236],[0.815,0.162,0.183],[0.804,0.162,0.123],[0.803,0.162,0.059],[0.807,0.162,-0.006],[0.814,0.162,-0.072],[0.822,0.162,-0.139],[0.83,0.162,-0.208],[0.837,0.162,-0.277],[0.843,0.162,-0.348],[0.848,0.162,-0.418],[0.851,0.162,-0.489],[0.854,0.162,-0.559],[0.855,0.162,-0.629],[0.855,0.162,-0.696],[0.853,0.162,-0.761],[0.852,0.162,-0.818],[0.855,0.162,-0.867],[0.856,0.162,-0.891],[0.858,0.162,-0.913]],
+    [[-0.658,-0.971,0.886],[-0.643,-0.971,0.876],[-0.627,-0.971,0.866],[-0.596,-0.971,0.846],[-0.557,-0.971,0.825],[-0.513,-0.971,0.805],[-0.466,-0.971,0.786],[-0.417,-0.971,0.767],[-0.372,-0.971,0.744],[-0.335,-0.971,0.715],[-0.31,-0.971,0.679],[-0.299,-0.971,0.637],[-0.302,-0.971,0.59],[-0.315,-0.971,0.521],[-0.335,-0.971,0.453],[-0.359,-0.971,0.385],[-0.385,-0.971,0.319],[-0.408,-0.971,0.26],[-0.427,-0.971,0.226],[-0.441,-0.971,0.195],[-0.456,-0.971,0.168],[-0.473,-0.971,0.147],[-0.5,-0.971,0.134],[-0.537,-0.971,0.126],[-0.582,-0.971,0.127],[-0.632,-0.971,0.136],[-0.684,-0.971,0.15],[-0.738,-0.971,0.165],[-0.792,-0.971,0.182],[-0.849,-0.971,0.201],[-0.904,-0.971,0.223],[-0.957,-0.971,0.247],[-1.006,-0.971,0.276],[-1.05,-0.971,0.309],[-1.085,-0.971,0.345],[-1.111,-0.971,0.379],[-1.128,-0.971,0.408],[-1.137,-0.971,0.429],[-1.139,-0.971,0.441],[-1.138,-0.971,0.445],[-1.136,-0.971,0.446],[-1.136,-0.971,0.446],[-1.137,-0.971,0.445],[-1.138,-0.971,0.444],[-1.137,-0.971,0.444],[-1.134,-0.971,0.444],[-1.128,-0.971,0.445],[-1.122,-0.971,0.447],[-1.118,-0.971,0.449],[-1.116,-0.971,0.45],[-1.117,-0.971,0.447],[-1.121,-0.971,0.44],[-1.126,-0.971,0.432],[-1.132,-0.971,0.424],[-1.137,-0.971,0.417],[-1.14,-0.971,0.413],[-1.14,-0.971,0.411],[-1.139,-0.971,0.411],[-1.139,-0.971,0.411],[-1.14,-0.971,0.412],[-1.142,-0.971,0.415],[-1.144,-0.971,0.421],[-1.144,-0.971,0.427],[-1.139,-0.971,0.436],[-1.128,-0.971,0.451],[-1.113,-0.971,0.472],[-1.095,-0.971,0.498],[-1.075,-0.971,0.535],[-1.055,-0.971,0.577],[-1.036,-0.971,0.62],[-1.016,-0.971,0.663],[-0.992,-0.971,0.703],[-0.967,-0.971,0.739],[-0.937,-0.971,0.77],[-0.903,-0.971,0.796],[-0.865,-0.971,0.813],[-0.826,-0.971,0.822],[-0.786,-0.971,0.825],[-0.748,-0.971,0.827],[-0.713,-0.971,0.831],[-0.696,-0.971,0.831],[-0.679,-0.971,0.834]],
+    [[-0.7,-0.926,0.936],[-0.724,-0.926,0.929],[-0.746,-0.926,0.921],[-0.79,-0.926,0.91],[-0.827,-0.926,0.898],[-0.854,-0.926,0.889],[-0.873,-0.926,0.884],[-0.883,-0.926,0.883],[-0.886,-0.926,0.884],[-0.887,-0.926,0.884],[-0.886,-0.926,0.884],[-0.886,-0.926,0.884],[-0.886,-0.926,0.884],[-0.886,-0.926,0.884],[-0.887,-0.926,0.885],[-0.887,-0.926,0.885],[-0.888,-0.926,0.886],[-0.888,-0.926,0.886],[-0.888,-0.926,0.886],[-0.888,-0.926,0.886],[-0.888,-0.926,0.886],[-0.888,-0.926,0.886],[-0.891,-0.926,0.885],[-0.899,-0.926,0.883],[-0.913,-0.926,0.878],[-0.93,-0.926,0.873],[-0.955,-0.926,0.866],[-0.981,-0.926,0.848],[-1,-0.926,0.818],[-1.007,-0.926,0.776],[-1.006,-0.926,0.723],[-0.992,-0.926,0.66],[-0.967,-0.926,0.596],[-0.939,-0.926,0.533],[-0.909,-0.926,0.472],[-0.877,-0.926,0.411],[-0.845,-0.926,0.353],[-0.811,-0.926,0.302],[-0.782,-0.926,0.263],[-0.758,-0.926,0.239],[-0.74,-0.926,0.228],[-0.728,-0.926,0.227],[-0.725,-0.926,0.23],[-0.724,-0.926,0.235],[-0.724,-0.926,0.236],[-0.726,-0.926,0.235],[-0.727,-0.926,0.235],[-0.729,-0.926,0.236],[-0.729,-0.926,0.237],[-0.73,-0.926,0.237],[-0.731,-0.926,0.237],[-0.732,-0.926,0.236],[-0.734,-0.926,0.235],[-0.739,-0.926,0.232],[-0.745,-0.926,0.225],[-0.747,-0.926,0.217],[-0.748,-0.926,0.212],[-0.745,-0.926,0.207],[-0.739,-0.926,0.205],[-0.733,-0.926,0.206],[-0.728,-0.926,0.214],[-0.719,-0.926,0.224],[-0.7,-0.926,0.234],[-0.669,-0.926,0.247],[-0.624,-0.926,0.263],[-0.567,-0.926,0.278],[-0.505,-0.926,0.295],[-0.444,-0.926,0.317],[-0.392,-0.926,0.347],[-0.353,-0.926,0.385],[-0.333,-0.926,0.43],[-0.331,-0.926,0.482],[-0.344,-0.926,0.54],[-0.365,-0.926,0.599],[-0.386,-0.926,0.657],[-0.398,-0.926,0.685],[-0.407,-0.926,0.714]]
+  ];
+
+  var SCALE = 2.6;
+  function scalePts(walks){
+    return walks.map(function(pts){
+      return pts.map(function(p){ return [p[0]*SCALE, p[1]*SCALE, p[2]*SCALE]; });
+    });
+  }
+  var rawWalks = scalePts(RAW_WALKS);
+  var resolvedWalks = scalePts(RESOLVED_WALKS);
+  var walkAlpha = [1, 0.82, 0.66, 0.78];
+
+  var W = 0, H = 0, DPR = Math.min(window.devicePixelRatio || 1, 2);
+  function resize(){
+    var rect = canvas.getBoundingClientRect();
+    W = rect.width; H = rect.height;
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  var pitch = 0.5;
+  var theta = 0.7;
+  function project(x,y,z){
+    var cy = y*Math.cos(pitch) - z*Math.sin(pitch);
+    var cz = y*Math.sin(pitch) + z*Math.cos(pitch);
+    var cx = x;
+    var rx = cx*Math.cos(theta) + cz*Math.sin(theta);
+    var rz = -cx*Math.sin(theta) + cz*Math.cos(theta);
+    var camDist = 6.6;
+    var depth = camDist + rz;
+    var scale = (camDist*0.9) / depth;
+    var unit = Math.min(W,H) * 0.30;
+    return {
+      x: W/2 + rx*scale*unit,
+      y: H/2 - cy*scale*unit,
+      scale: scale,
+      depth: depth
+    };
+  }
+
+  function avgDepth(pts){
+    var s = 0, n = 0;
+    for (var i = 0; i < pts.length; i += 8){ s += pts[i].depth; n++; }
+    return n ? s / n : 0;
+  }
+
+  function render(m){
+    ctx.clearRect(0,0,W,H);
+
+    var walksProj = rawWalks.map(function(rawPts, wi){
+      var resPts = resolvedWalks[wi];
+      return rawPts.map(function(p, i){
+        var q = resPts[i];
+        var x = p[0] + (q[0]-p[0])*m;
+        var y = p[1] + (q[1]-p[1])*m;
+        var z = p[2] + (q[2]-p[2])*m;
+        return project(x,y,z);
+      });
+    });
+
+    var order = walksProj.map(function(_,i){ return i; }).sort(function(a,b){
+      return avgDepth(walksProj[b]) - avgDepth(walksProj[a]);
+    });
+
+    order.forEach(function(wi){
+      var pts = walksProj[wi];
+      var mid = pts[Math.floor(pts.length/2)];
+      var depthAlpha = Math.max(0.22, Math.min(1, mid.scale));
+      var alpha = walkAlpha[wi % walkAlpha.length] * depthAlpha;
+
+      /* the path itself: raw jitter smooths into a clean corridor as m -> 1 */
+      ctx.beginPath();
+      pts.forEach(function(p,i){ if (i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y); });
+      ctx.strokeStyle = 'rgba(47,226,204,'+((0.22 + 0.42*m) * alpha)+')';
+      ctx.lineWidth = 1.7;
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.stroke();
+
+      /* sparse waypoint texture along the walk */
+      for (var i = 6; i < pts.length - 6; i += 9){
+        var p = pts[i];
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 1.3*Math.max(p.scale,0.3), 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(47,226,204,'+(0.38*alpha)+')';
+        ctx.fill();
+      }
+
+      /* start/end anchors — the two GPS fixes that pin a real walk in place,
+         brightening as the path resolves into its anchored frame */
+      [0, pts.length-1].forEach(function(i){
+        var p = pts[i];
+        var r = 3.2 * Math.max(p.scale, 0.35);
+        var a = (0.28 + 0.62*m) * Math.max(0.3, Math.min(1,p.scale));
+        var glow = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r*4.5);
+        glow.addColorStop(0, 'rgba(245,169,59,'+(0.55*a)+')');
+        glow.addColorStop(1, 'rgba(245,169,59,0)');
+        ctx.beginPath(); ctx.arc(p.x,p.y,r*4.5,0,Math.PI*2); ctx.fillStyle = glow; ctx.fill();
+        ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2);
+        ctx.fillStyle = 'rgba(245,169,59,'+a+')'; ctx.fill();
+      });
+    });
+  }
+
+  if (reduceMotion){
+    render(1);
+    window.addEventListener('resize', function(){ render(1); });
+  } else {
+    var start = performance.now();
+    var CYCLE = 16000;
+    function frame(now){
+      var elapsed = now - start;
+      theta = 0.7 + elapsed * 0.00009;
+      var m = 0.5 + 0.5*Math.sin((elapsed % CYCLE)/CYCLE * Math.PI*2 - Math.PI/2);
+      render(m);
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+})();
+</script>
+
+<script>
+(function(){
+  "use strict";
+  /* real, downsampled (x,z) traces from the four recorded walks currently in
+     web/data/ (walk-1789181272 .. walk-1789183028), each normalized to
+     [-1,1] on its own axes — an honest snapshot, cycled in order, newest
+     last. Refresh this array by hand as more walks get recorded; there's no
+     live database read here (a page that reads a live store has to be
+     organization-internal, which would break sharing this with outside VCs). */
+  var WALKS = [
+    [[0.534,-1],[0.529,-0.956],[0.517,-0.851],[0.533,-0.768],[0.536,-0.665],[0.542,-0.552],[0.545,-0.438],[0.538,-0.328],[0.532,-0.218],[0.526,-0.11],[0.52,0],[0.51,0.116],[0.488,0.23],[0.472,0.338],[0.464,0.441],[0.468,0.546],[0.505,0.635],[0.573,0.682],[0.668,0.691],[0.76,0.656],[0.817,0.597],[0.837,0.543],[0.843,0.485],[0.853,0.436],[0.854,0.38],[0.859,0.327],[0.88,0.263],[0.949,0.242],[0.992,0.297],[0.995,0.347],[1,0.404],[0.993,0.46],[0.983,0.518],[0.967,0.573],[0.95,0.629],[0.894,0.677],[0.832,0.667],[0.801,0.613],[0.8,0.55],[0.818,0.501],[0.828,0.458],[0.831,0.411],[0.831,0.364],[0.827,0.316],[0.848,0.251],[0.921,0.232],[0.98,0.268],[0.993,0.321],[0.993,0.37],[0.992,0.416],[0.988,0.466],[0.987,0.508],[0.983,0.549],[0.976,0.592],[0.958,0.647],[0.914,0.714],[0.836,0.731],[0.752,0.721],[0.67,0.701],[0.575,0.687],[0.487,0.666],[0.392,0.638],[0.292,0.597],[0.187,0.56],[0.074,0.536],[-0.041,0.509],[-0.144,0.478],[-0.25,0.458],[-0.36,0.444],[-0.462,0.441],[-0.562,0.441],[-0.668,0.446],[-0.767,0.471],[-0.828,0.521],[-0.839,0.559],[-0.831,0.551],[-0.864,0.6],[-0.886,0.674],[-0.902,0.713],[-0.952,0.761],[-0.982,0.826],[-0.99,0.912],[-1,1]],
+    [[-0.813,1],[-0.843,0.99],[-0.89,0.978],[-0.941,0.946],[-0.979,0.887],[-0.995,0.811],[-1,0.736],[-1,0.668],[-0.992,0.612],[-0.993,0.557],[-0.992,0.498],[-0.987,0.442],[-0.987,0.402],[-0.989,0.376],[-0.99,0.343],[-0.981,0.297],[-0.943,0.258],[-0.889,0.241],[-0.82,0.244],[-0.757,0.251],[-0.69,0.262],[-0.619,0.274],[-0.544,0.285],[-0.472,0.294],[-0.402,0.305],[-0.326,0.322],[-0.252,0.334],[-0.185,0.344],[-0.11,0.353],[-0.03,0.362],[0.047,0.378],[0.117,0.392],[0.19,0.413],[0.26,0.424],[0.333,0.435],[0.396,0.45],[0.463,0.465],[0.502,0.524],[0.562,0.53],[0.622,0.54],[0.686,0.547],[0.747,0.558],[0.806,0.573],[0.863,0.576],[0.916,0.564],[0.96,0.531],[0.978,0.479],[0.99,0.422],[1,0.355],[1,0.282],[0.986,0.226],[0.956,0.196],[0.913,0.209],[0.879,0.273],[0.87,0.344],[0.866,0.413],[0.861,0.481],[0.854,0.534],[0.829,0.575],[0.779,0.593],[0.724,0.58],[0.678,0.542],[0.65,0.477],[0.641,0.413],[0.636,0.344],[0.636,0.272],[0.639,0.2],[0.649,0.128],[0.659,0.055],[0.666,-0.018],[0.672,-0.092],[0.68,-0.172],[0.684,-0.253],[0.688,-0.33],[0.692,-0.406],[0.696,-0.483],[0.696,-0.561],[0.698,-0.638],[0.698,-0.713],[0.693,-0.79],[0.688,-0.851],[0.686,-0.91],[0.691,-0.96],[0.707,-0.989],[0.723,-1]],
+    [[0.105,1],[0.124,0.981],[0.19,0.929],[0.273,0.868],[0.367,0.809],[0.464,0.749],[0.576,0.71],[0.698,0.676],[0.815,0.634],[0.929,0.566],[0.992,0.455],[1,0.338],[0.983,0.218],[0.945,0.098],[0.894,-0.034],[0.841,-0.415],[0.775,-0.534],[0.707,-0.643],[0.642,-0.739],[0.627,-0.795],[0.625,-0.848],[0.609,-0.925],[0.538,-0.985],[0.435,-1],[0.316,-0.968],[0.202,-0.945],[0.087,-0.91],[-0.038,-0.876],[-0.173,-0.828],[-0.304,-0.776],[-0.433,-0.727],[-0.562,-0.669],[-0.677,-0.594],[-0.791,-0.514],[-0.874,-0.412],[-0.933,-0.311],[-0.971,-0.209],[-0.983,-0.155],[-0.99,-0.151],[-0.976,-0.148],[-0.956,-0.154],[-0.952,-0.155],[-0.965,-0.145],[-0.987,-0.153],[-0.985,-0.164],[-0.965,-0.156],[-0.947,-0.162],[-0.929,-0.147],[-0.919,-0.137],[-0.916,-0.135],[-0.916,-0.134],[-0.926,-0.151],[-0.938,-0.189],[-0.965,-0.216],[-0.975,-0.241],[-0.984,-0.24],[-0.984,-0.239],[-0.976,-0.237],[-0.967,-0.24],[-0.966,-0.244],[-0.976,-0.241],[-0.996,-0.228],[-1,-0.193],[-0.99,-0.165],[-0.972,-0.165],[-0.918,-0.13],[-0.865,-0.039],[-0.822,0.07],[-0.786,0.177],[-0.736,0.296],[-0.687,0.405],[-0.645,0.513],[-0.59,0.611],[-0.519,0.686],[-0.439,0.759],[-0.343,0.804],[-0.253,0.837],[-0.152,0.829],[-0.061,0.806],[0.02,0.795],[0.097,0.826],[0.153,0.889]],
+    [[0.046,0.989],[-0.056,1],[-0.182,0.99],[-0.295,0.939],[-0.4,0.889],[-0.489,0.857],[-0.555,0.829],[-0.58,0.849],[-0.597,0.848],[-0.594,0.852],[-0.593,0.85],[-0.592,0.85],[-0.588,0.847],[-0.589,0.848],[-0.591,0.849],[-0.591,0.848],[-0.594,0.851],[-0.595,0.852],[-0.595,0.853],[-0.596,0.855],[-0.598,0.857],[-0.597,0.856],[-0.596,0.855],[-0.595,0.854],[-0.596,0.855],[-0.597,0.856],[-0.598,0.857],[-0.611,0.851],[-0.666,0.835],[-0.741,0.81],[-0.791,0.794],[-0.839,0.784],[-0.94,0.757],[-1,0.622],[-0.964,0.453],[-0.905,0.303],[-0.859,0.159],[-0.795,0.015],[-0.716,-0.138],[-0.647,-0.292],[-0.57,-0.429],[-0.482,-0.569],[-0.412,-0.708],[-0.34,-0.828],[-0.244,-0.915],[-0.175,-0.968],[-0.153,-0.956],[-0.153,-0.903],[-0.138,-0.891],[-0.141,-0.892],[-0.148,-0.902],[-0.154,-0.9],[-0.156,-0.9],[-0.156,-0.897],[-0.161,-0.895],[-0.163,-0.896],[-0.164,-0.894],[-0.163,-0.891],[-0.163,-0.892],[-0.177,-0.894],[-0.177,-0.897],[-0.177,-0.907],[-0.194,-0.911],[-0.245,-0.939],[-0.244,-0.991],[-0.218,-1],[-0.186,-0.979],[-0.158,-0.975],[-0.15,-0.972],[-0.151,-0.973],[-0.157,-0.952],[-0.145,-0.882],[-0.057,-0.848],[0.084,-0.839],[0.241,-0.806],[0.389,-0.769],[0.536,-0.722],[0.696,-0.66],[0.83,-0.606],[0.957,-0.525],[1,-0.395],[0.99,-0.258],[0.926,-0.113],[0.848,0.024],[0.787,0.155],[0.739,0.297],[0.706,0.434],[0.691,0.566]]
+  ];
+
+  var c = document.getElementById('orb-raw');
+  if (!c) return;
+  var octx = c.getContext('2d');
+  var W = 200, H = 200, pad = 30;
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function toXY(p){ return [ pad + (p[0]+1)/2*(W-2*pad), pad + (1-(p[1]+1)/2)*(H-2*pad) ]; }
+
+  function draw(xy, frac){
+    octx.clearRect(0,0,W,H);
+    var n = Math.max(2, Math.round(xy.length*frac));
+    octx.beginPath();
+    for (var i=0;i<n;i++){
+      var p = xy[i];
+      if (i===0) octx.moveTo(p[0],p[1]); else octx.lineTo(p[0],p[1]);
+    }
+    octx.strokeStyle = 'rgba(47,226,204,.8)';
+    octx.lineWidth = 2.2; octx.lineJoin = 'round'; octx.lineCap = 'round';
+    octx.stroke();
+    octx.fillStyle = 'rgba(47,226,204,.85)';
+    for (var j=0;j<n;j+=6){ octx.beginPath(); octx.arc(xy[j][0],xy[j][1],1.6,0,Math.PI*2); octx.fill(); }
+    if (n>0){
+      var last = xy[n-1];
+      octx.beginPath(); octx.arc(last[0],last[1],3.2,0,Math.PI*2);
+      octx.fillStyle = 'rgba(245,169,59,.95)'; octx.fill();
+    }
+  }
+
+  /* cycles through however many walks it was given (1-5), each redrawing
+     itself in, then holding briefly before the next one starts. Timing is
+     derived purely from elapsed time so drift never accumulates. */
+  function runCycle(walksPoints){
+    var xyList = walksPoints.map(function(pts){ return pts.map(toXY); });
+    if (reduce){ draw(xyList[0], 1); return; }
+    var DUR = 4200, HOLD = 1100, period = DUR + HOLD;
+    var total = period * xyList.length;
+    /* t0 comes from the first frame's own timestamp, not performance.now().
+       rAF hands the callback the time the FRAME began, which can predate a
+       performance.now() taken while this script was still running — that made
+       (now - t0) negative, idx -1, and the very first draw() threw on
+       undefined, killing the loop and leaving the orb blank. */
+    var t0 = null;
+    function frame(now){
+      if (t0 === null) t0 = now;
+      var e = (now - t0) % total;
+      if (e < 0) e += total;
+      var idx = Math.floor(e / period) % xyList.length;
+      var within = e - idx * period;
+      draw(xyList[idx], Math.min(1, within / DUR));
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  runCycle(WALKS);
+})();
+</script>
+
+<script>
+(function(){
+  "use strict";
+  // Drives the "spinfast" arrow stickers with one continuous angle/velocity
+  // per element instead of a CSS keyframe swap on :hover. A keyframe swap
+  // always restarts at its own 0% state, which is exactly what made the
+  // reverse-and-accelerate spin visibly jump — this can't jump because the
+  // angle is never reset, only eased toward a new target velocity.
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var spinners = Array.prototype.slice.call(document.querySelectorAll('.sticker--spinfast'));
+  if (!spinners.length) return;
+
+  var IDLE_VEL = 36;     // deg/s — matches the old 10s/revolution idle spin
+  var HOVER_VEL = -640;  // deg/s — fast, reversed
+
+  var items = spinners.map(function(el){
+    var svg = el.querySelector('svg');
+    if (svg) svg.style.transformOrigin = '50% 50%';
+    var hovering = false;
+    el.addEventListener('mouseenter', function(){ hovering = true; });
+    el.addEventListener('mouseleave', function(){ hovering = false; });
+    el.addEventListener('focus', function(){ hovering = true; });
+    el.addEventListener('blur', function(){ hovering = false; });
+    // Each one picks its own direction and a slightly different rate, so a
+    // cluster of marks never reads as one geared mechanism. Hover still
+    // reverses whichever way this one happens to be going.
+    var dir = Math.random() < 0.5 ? 1 : -1;
+    var idle = IDLE_VEL * dir * (0.75 + Math.random()*0.6);
+    return {
+      svg: svg,
+      angle: Math.random()*360,
+      vel: idle,
+      idle: idle,
+      hover: HOVER_VEL * dir,
+      get hovering(){ return hovering; }
+    };
+  });
+
+  if (reduce){
+    items.forEach(function(it){ if (it.svg) it.svg.style.transform = 'rotate(0deg)'; });
+    return;
+  }
+
+  var last = performance.now();
+  function frame(now){
+    var dt = Math.min(0.05, (now-last)/1000); last = now;
+    items.forEach(function(it){
+      var target = it.hovering ? it.hover : it.idle;
+      // ease velocity toward the target — quick to spin up, gentler to settle
+      var rate = it.hovering ? 2.4 : 1.4;
+      it.vel += (target - it.vel) * Math.min(1, rate*dt);
+      it.angle += it.vel*dt;
+      if (it.svg) it.svg.style.transform = 'rotate(' + it.angle + 'deg)';
+    });
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------------- every mark spins its own way ----------------
+     The CSS-driven stickers all shared one 10s clockwise animation, which
+     made a page full of them look like one rotating assembly. Direction,
+     rate and starting phase are now per-element; the negative delay is what
+     scatters the phase so they don't line up on load. */
+  var spun = document.querySelectorAll('.sticker:not(.sticker--spinfast) svg');
+  Array.prototype.forEach.call(spun, function(svg){
+    var dur = 7 + Math.random()*8;                       // 7–15s per turn
+    svg.style.setProperty('--spin-dur', dur.toFixed(2) + 's');
+    svg.style.setProperty('--spin-dir', Math.random() < 0.5 ? 'reverse' : 'normal');
+    svg.style.setProperty('--spin-delay', (-Math.random()*dur).toFixed(2) + 's');
+  });
+
+  /* ---------------- the logo comes from logo.svg ----------------
+     Swap the contents of the single <symbol> and all 25 marks on the page
+     follow, because each one is a <use> pointing at it. If logo.svg is
+     missing or won't parse, the built-in mark in the sprite stays — the
+     page is never left without one. */
+  if (!window.fetch || !window.DOMParser) return;
+
+  fetch('logo.svg', { cache: 'no-cache' })
+    .then(function(r){ if (!r.ok) throw new Error('no logo.svg'); return r.text(); })
+    .then(function(text){
+      var doc = new DOMParser().parseFromString(text, 'image/svg+xml');
+      if (doc.querySelector('parsererror')) throw new Error('logo.svg did not parse');
+      var src = doc.documentElement;
+      if (!src || src.nodeName.toLowerCase() !== 'svg') throw new Error('not an svg');
+
+      var sym = document.getElementById('logo-mark');
+      if (!sym) return;
+
+      /* Carry over the drawing attributes the file sets on its root, since
+         those move to the <symbol> — but deliberately NOT `color`. That one
+         is the file's own standalone fallback (what the favicon renders
+         with); on the page the sticker supplies the colour instead. */
+      ['viewBox','fill','stroke','stroke-width','stroke-linecap','stroke-linejoin','opacity']
+        .forEach(function(a){ if (src.hasAttribute(a)) sym.setAttribute(a, src.getAttribute(a)); });
+
+      while (sym.firstChild) sym.removeChild(sym.firstChild);
+      Array.prototype.slice.call(src.childNodes).forEach(function(n){
+        sym.appendChild(document.importNode(n, true));
+      });
+
+      /* Re-point every <use> so browsers that don't re-render a live symbol
+         mutation still pick the new art up. */
+      var uses = document.querySelectorAll('use');
+      Array.prototype.forEach.call(uses, function(u){
+        if (u.getAttribute('href') !== '#logo-mark') return;
+        u.parentNode.replaceChild(u.cloneNode(true), u);
+      });
+    })
+    .catch(function(){ /* keep the built-in mark */ });
+})();
+</script>
+
+</body></html>

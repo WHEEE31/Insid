@@ -1,0 +1,69 @@
+<title>Behind the Scenes</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --ink:#070b10; --panel:#111a24; --paper:#e9f1f4;
+    --cyan:#2fe2cc; --amber:#f5a93b;
+    --fog:rgba(233,241,244,.62); --fog-dim:rgba(233,241,244,.40);
+    --line:rgba(233,241,244,.12); --line-strong:rgba(233,241,244,.20);
+    --font-display:'Rajdhani',system-ui,sans-serif;
+    --font-body:'IBM Plex Sans',system-ui,sans-serif;
+    --font-mono:'IBM Plex Mono',Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  body{background:var(--ink);color:var(--paper);font-family:var(--font-body);line-height:1.6;}
+  .wrap{max-width:880px;margin-inline:auto;padding:clamp(28px,6vw,72px) clamp(20px,5vw,40px) 80px;}
+  a{color:var(--cyan);}
+  a.back{font-family:var(--font-mono);font-size:.78rem;text-decoration:none;color:var(--fog);display:inline-flex;gap:.4rem;}
+  a.back:hover{color:var(--cyan);}
+  h1{font-family:var(--font-display);font-weight:700;font-size:clamp(2.2rem,6vw,3.2rem);
+    margin:1.4rem 0 .5rem;text-wrap:balance;}
+  .lede{color:var(--fog);max-width:60ch;font-size:1.05rem;}
+  .todo-pill{display:inline-flex;align-items:center;gap:.5rem;margin-top:1.6rem;
+    font-family:var(--font-mono);font-size:.72rem;color:var(--amber);
+    border:1px dashed rgba(245,169,59,.4);border-radius:999px;padding:.4rem .9rem;}
+  .todo-pill::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--amber);}
+  section{margin-top:3.2rem;}
+  h2{font-family:var(--font-display);font-weight:700;font-size:1.4rem;margin-bottom:1.1rem;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;}
+  .slot{aspect-ratio:4/3;border:1px dashed var(--line-strong);border-radius:12px;
+    display:flex;align-items:center;justify-content:center;flex-direction:column;gap:.4rem;
+    color:var(--fog-dim);font-family:var(--font-mono);font-size:.78rem;text-align:center;padding:1rem;}
+  .slot span.plus{font-size:1.6rem;color:var(--fog-dim);}
+  .entry{border-left:2px solid var(--line-strong);padding-left:1.1rem;margin-top:1.3rem;}
+  .entry h3{font-family:var(--font-body);font-weight:600;font-size:1rem;margin:0 0 .3rem;color:var(--paper);}
+  .entry p{margin:0;color:var(--fog);font-size:.92rem;}
+  footer{border-top:1px solid var(--line);margin-top:4rem;padding-top:1.6rem;
+    font-family:var(--font-mono);font-size:.7rem;color:var(--fog-dim);}
+</style>
+
+<div class="wrap">
+  <a class="back" href="./">&larr; back to Insid</a>
+  <h1>Behind the scenes</h1>
+  <p class="lede">The bloopers, the barometer that lied for a week, the whiteboard photo nobody can read anymore &mdash; this is the page for it. Not investor-facing, just the fun stuff.</p>
+  <div class="todo-pill">template &mdash; drop in real photos &amp; stories once there's more to show</div>
+
+  <section>
+    <h2>Photos</h2>
+    <div class="grid">
+      <div class="slot"><span class="plus">+</span>add a photo</div>
+      <div class="slot"><span class="plus">+</span>add a photo</div>
+      <div class="slot"><span class="plus">+</span>add a photo</div>
+      <div class="slot"><span class="plus">+</span>add a photo</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Dev diary</h2>
+    <div class="entry">
+      <h3>Placeholder entry &mdash; replace me</h3>
+      <p>Short anecdote goes here: a bug, a 2 a.m. realization, the first walk that actually routed correctly. One or two sentences, dated if it helps.</p>
+    </div>
+    <div class="entry">
+      <h3>Placeholder entry &mdash; replace me</h3>
+      <p>Another one. Keep these short and specific &mdash; the small, weird details are the ones people remember.</p>
+    </div>
+  </section>
+
+  <footer>INSID &mdash; behind the scenes (template)</footer>
+</div>
