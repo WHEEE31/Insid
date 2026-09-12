@@ -1,1 +1,0 @@
-"""HackCMU backend package."""
