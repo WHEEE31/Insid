@@ -1,0 +1,2293 @@
+{
+  "source": "OpenStreetMap via Overpass API (ODbL)",
+  "generatedBy": "tools/fetch-buildings.mjs",
+  "generatedAt": "2026-09-12T10:53:59.602Z",
+  "center": {
+    "lat": 40.4433,
+    "lon": -79.9436
+  },
+  "radiusM": 750,
+  "note": "Coordinates are OSM building centroids, not entrances. Entrance positions come from collectors' GPS fixes at record time.",
+  "codeNote": "codeSource 'curated' = the commonly-used CMU prefix, hand-entered here and worth verifying against the registrar's list; 'derived' = an acronym generated from the name, almost certainly not the official code.",
+  "buildings": [
+    {
+      "id": "1094-devon",
+      "name": "1094 Devon",
+      "code": "1D",
+      "codeSource": "derived",
+      "aliases": [
+        "1094 devon",
+        "1094",
+        "1d"
+      ],
+      "lat": 40.445204,
+      "lon": -79.94102,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27643505"
+      ]
+    },
+    {
+      "id": "99-gladstone",
+      "name": "99 Gladstone",
+      "code": "9G",
+      "codeSource": "derived",
+      "aliases": [
+        "99 gladstone",
+        "99",
+        "9g"
+      ],
+      "lat": 40.441645,
+      "lon": -79.937736,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27643470"
+      ]
+    },
+    {
+      "id": "alcohol-house",
+      "name": "Alcohol House",
+      "code": "AH2",
+      "codeSource": "derived",
+      "aliases": [
+        "alcohol house",
+        "alcohol",
+        "ah"
+      ],
+      "lat": 40.442639,
+      "lon": -79.949416,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/329218882"
+      ]
+    },
+    {
+      "id": "alumni-hall",
+      "name": "Alumni Hall",
+      "code": "AH3",
+      "codeSource": "derived",
+      "aliases": [
+        "alumni hall",
+        "alumni",
+        "ah"
+      ],
+      "lat": 40.445841,
+      "lon": -79.946354,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/544174664"
+      ]
+    },
+    {
+      "id": "alumni-house",
+      "name": "Alumni House",
+      "code": "AH",
+      "codeSource": "derived",
+      "aliases": [
+        "alumni house",
+        "alumni",
+        "ah"
+      ],
+      "lat": 40.444784,
+      "lon": -79.942084,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27630034"
+      ]
+    },
+    {
+      "id": "ansys-hall",
+      "name": "ANSYS Hall",
+      "code": "ANS",
+      "codeSource": "curated",
+      "aliases": [
+        "ansys hall",
+        "ansys",
+        "ah",
+        "ans"
+      ],
+      "lat": 40.441964,
+      "lon": -79.94661,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/1001941217"
+      ]
+    },
+    {
+      "id": "b1",
+      "name": "B1",
+      "code": "B3",
+      "codeSource": "derived",
+      "aliases": [
+        "b1"
+      ],
+      "lat": 40.443948,
+      "lon": -79.938197,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/544174491"
+      ]
+    },
+    {
+      "id": "b2",
+      "name": "B2",
+      "code": "B",
+      "codeSource": "derived",
+      "aliases": [
+        "b2"
+      ],
+      "lat": 40.443998,
+      "lon": -79.938084,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/544174062"
+      ]
+    },
+    {
+      "id": "b3",
+      "name": "B3",
+      "code": "B2",
+      "codeSource": "derived",
+      "aliases": [
+        "b3"
+      ],
+      "lat": 40.444048,
+      "lon": -79.937981,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/544174129"
+      ]
+    },
+    {
+      "id": "baker-hall",
+      "name": "Baker Hall",
+      "code": "BH",
+      "codeSource": "curated",
+      "aliases": [
+        "baker hall",
+        "baker",
+        "bh"
+      ],
+      "lat": 40.441511,
+      "lon": -79.94495,
+      "levels": 3,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27590907"
+      ]
+    },
+    {
+      "id": "bao-cmu",
+      "name": "BAO (CMU)",
+      "code": "BC",
+      "codeSource": "derived",
+      "aliases": [
+        "bao (cmu)",
+        "bao",
+        "bc"
+      ],
+      "lat": 40.445143,
+      "lon": -79.949061,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/121054817"
+      ]
+    },
+    {
+      "id": "bellefield-boiler-plant",
+      "name": "Bellefield Boiler Plant",
+      "code": "BBP",
+      "codeSource": "derived",
+      "aliases": [
+        "bellefield boiler plant",
+        "bellefield",
+        "bbp"
+      ],
+      "lat": 40.442201,
+      "lon": -79.949121,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/302715370"
+      ]
+    },
+    {
+      "id": "bellefield-hall",
+      "name": "Bellefield Hall",
+      "code": "BH4",
+      "codeSource": "derived",
+      "aliases": [
+        "bellefield hall",
+        "bellefield",
+        "bh"
+      ],
+      "lat": 40.4454,
+      "lon": -79.9509,
+      "levels": 4,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/154108395"
+      ]
+    },
+    {
+      "id": "boss-house",
+      "name": "Boss House",
+      "code": "BH2",
+      "codeSource": "derived",
+      "aliases": [
+        "boss house",
+        "boss",
+        "bh"
+      ],
+      "lat": 40.441604,
+      "lon": -79.939318,
+      "levels": 4,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27591450"
+      ]
+    },
+    {
+      "id": "bramer-house",
+      "name": "Bramer House",
+      "code": "BH3",
+      "codeSource": "derived",
+      "aliases": [
+        "bramer house",
+        "bramer",
+        "bh"
+      ],
+      "lat": 40.445971,
+      "lon": -79.941028,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27643509"
+      ]
+    },
+    {
+      "id": "campus-design-and-facility-development",
+      "name": "Campus Design and Facility Development",
+      "code": "CDFD",
+      "codeSource": "derived",
+      "aliases": [
+        "campus design and facility development",
+        "campus",
+        "cdfd"
+      ],
+      "lat": 40.447643,
+      "lon": -79.946314,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/545283494"
+      ]
+    },
+    {
+      "id": "carnegie-library-of-pittsburgh-main-oakland",
+      "name": "Carnegie Library of Pittsburgh - Main (Oakland)",
+      "code": "CLPM",
+      "codeSource": "derived",
+      "aliases": [
+        "carnegie library of pittsburgh - main (oakland)",
+        "carnegie",
+        "clpmo"
+      ],
+      "lat": 40.442781,
+      "lon": -79.950579,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/31899524"
+      ]
+    },
+    {
+      "id": "carnegie-mellon-university",
+      "name": "Carnegie Mellon University",
+      "code": "CMU",
+      "codeSource": "derived",
+      "aliases": [
+        "carnegie mellon university",
+        "carnegie",
+        "cmu"
+      ],
+      "lat": 40.445005,
+      "lon": -79.948424,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/44157443"
+      ]
+    },
+    {
+      "id": "carnegie-museum-of-art",
+      "name": "Carnegie Museum of Art",
+      "code": "CMA",
+      "codeSource": "derived",
+      "aliases": [
+        "carnegie museum of art",
+        "carnegie",
+        "cma"
+      ],
+      "lat": 40.443674,
+      "lon": -79.949262,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/31899525"
+      ]
+    },
+    {
+      "id": "carnegie-museum-of-natural-history",
+      "name": "Carnegie Museum of Natural History",
+      "code": "CMNH",
+      "codeSource": "derived",
+      "aliases": [
+        "carnegie museum of natural history",
+        "carnegie",
+        "cmnh"
+      ],
+      "lat": 40.443066,
+      "lon": -79.950149,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/154257481"
+      ]
+    },
+    {
+      "id": "carnegie-music-hall",
+      "name": "Carnegie Music Hall",
+      "code": "CMH",
+      "codeSource": "derived",
+      "aliases": [
+        "carnegie music hall",
+        "carnegie music",
+        "carnegie",
+        "cmh"
+      ],
+      "lat": 40.44331,
+      "lon": -79.951015,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/154257484"
+      ]
+    },
+    {
+      "id": "cathedral-mansions",
+      "name": "Cathedral Mansions",
+      "code": "CM",
+      "codeSource": "derived",
+      "aliases": [
+        "cathedral mansions",
+        "cathedral",
+        "cm"
+      ],
+      "lat": 40.448394,
+      "lon": -79.946737,
+      "levels": 9,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/545283414"
+      ]
+    },
+    {
+      "id": "center-for-sustainable-landscapes",
+      "name": "Center for Sustainable Landscapes",
+      "code": "CSL",
+      "codeSource": "derived",
+      "aliases": [
+        "center for sustainable landscapes",
+        "center",
+        "csl"
+      ],
+      "lat": 40.438262,
+      "lon": -79.94868,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/392348779"
+      ]
+    },
+    {
+      "id": "center-for-technology-transfer-and-enterprise-creation",
+      "name": "Center for Technology Transfer and Enterprise Creation",
+      "code": "CTTE",
+      "codeSource": "derived",
+      "aliases": [
+        "center for technology transfer and enterprise creation",
+        "center",
+        "cttec"
+      ],
+      "lat": 40.444738,
+      "lon": -79.947807,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/44157444"
+      ]
+    },
+    {
+      "id": "central-catholic-high-school",
+      "name": "Central Catholic High School",
+      "code": "CCHS",
+      "codeSource": "derived",
+      "aliases": [
+        "central catholic high school",
+        "central",
+        "cchs"
+      ],
+      "lat": 40.446703,
+      "lon": -79.945775,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/544174671"
+      ]
+    },
+    {
+      "id": "chancellor-s-residence",
+      "name": "Chancellor's Residence",
+      "code": "CSR",
+      "codeSource": "derived",
+      "aliases": [
+        "chancellor's residence",
+        "chancellor",
+        "csr"
+      ],
+      "lat": 40.448928,
+      "lon": -79.944772,
+      "levels": 2,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/545283678"
+      ]
+    },
+    {
+      "id": "chipotle",
+      "name": "Chipotle",
+      "code": "C",
+      "codeSource": "derived",
+      "aliases": [
+        "chipotle"
+      ],
+      "lat": 40.44469,
+      "lon": -79.948111,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/171843174"
+      ]
+    },
+    {
+      "id": "clyde-house",
+      "name": "Clyde House",
+      "code": "CH2",
+      "codeSource": "derived",
+      "aliases": [
+        "clyde house",
+        "clyde",
+        "ch"
+      ],
+      "lat": 40.448245,
+      "lon": -79.946097,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/545283472"
+      ]
+    },
+    {
+      "id": "cohon-university-center",
+      "name": "Cohon University Center",
+      "code": "UC",
+      "codeSource": "curated",
+      "aliases": [
+        "cohon university center",
+        "cohon university",
+        "cohon",
+        "cuc",
+        "uc"
+      ],
+      "lat": 40.443497,
+      "lon": -79.942071,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27574394"
+      ]
+    },
+    {
+      "id": "collaborative-innovation-center",
+      "name": "Collaborative Innovation Center",
+      "code": "CIC",
+      "codeSource": "curated",
+      "aliases": [
+        "collaborative innovation center",
+        "collaborative innovation",
+        "collaborative",
+        "cic"
+      ],
+      "lat": 40.443974,
+      "lon": -79.946568,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27591069"
+      ]
+    },
+    {
+      "id": "college-of-fine-arts",
+      "name": "College of Fine Arts",
+      "code": "CFA",
+      "codeSource": "curated",
+      "aliases": [
+        "college of fine arts",
+        "college",
+        "cfa"
+      ],
+      "lat": 40.441567,
+      "lon": -79.942912,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27591225"
+      ]
+    },
+    {
+      "id": "craig-hall",
+      "name": "Craig Hall",
+      "code": "CH",
+      "codeSource": "derived",
+      "aliases": [
+        "craig hall",
+        "craig",
+        "ch"
+      ],
+      "lat": 40.446128,
+      "lon": -79.949201,
+      "levels": 5,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/154387896"
+      ]
+    },
+    {
+      "id": "cr-pes-parisiennes",
+      "name": "Crêpes Parisiennes",
+      "code": "CPP",
+      "codeSource": "derived",
+      "aliases": [
+        "crêpes parisiennes",
+        "cr",
+        "cpp"
+      ],
+      "lat": 40.446078,
+      "lon": -79.948641,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/173057615"
+      ]
+    },
+    {
+      "id": "cyert-hall",
+      "name": "Cyert Hall",
+      "code": "CYH",
+      "codeSource": "curated",
+      "aliases": [
+        "cyert hall",
+        "cyert",
+        "ch",
+        "cyh"
+      ],
+      "lat": 40.444245,
+      "lon": -79.943977,
+      "levels": 2,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27574718"
+      ]
+    },
+    {
+      "id": "delta-tau-delta-house",
+      "name": "Delta Tau Delta House",
+      "code": "DTDH",
+      "codeSource": "derived",
+      "aliases": [
+        "delta tau delta house",
+        "delta tau delta",
+        "delta",
+        "dtdh"
+      ],
+      "lat": 40.441896,
+      "lon": -79.938921,
+      "levels": 4,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27591621"
+      ]
+    },
+    {
+      "id": "disability-resources",
+      "name": "Disability Resources",
+      "code": "DR",
+      "codeSource": "derived",
+      "aliases": [
+        "disability resources",
+        "disability",
+        "dr"
+      ],
+      "lat": 40.442001,
+      "lon": -79.938679,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27591646"
+      ]
+    },
+    {
+      "id": "doherty-hall",
+      "name": "Doherty Hall",
+      "code": "DH",
+      "codeSource": "curated",
+      "aliases": [
+        "doherty hall",
+        "doherty",
+        "dh"
+      ],
+      "lat": 40.442518,
+      "lon": -79.944496,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27574545"
+      ]
+    },
+    {
+      "id": "donner-house",
+      "name": "Donner House",
+      "code": "DH2",
+      "codeSource": "derived",
+      "aliases": [
+        "donner house",
+        "donner",
+        "dh"
+      ],
+      "lat": 40.441945,
+      "lon": -79.94022,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27591346"
+      ]
+    },
+    {
+      "id": "east-campus-garage",
+      "name": "East Campus Garage",
+      "code": "ECG",
+      "codeSource": "derived",
+      "aliases": [
+        "east campus garage",
+        "east",
+        "ecg"
+      ],
+      "lat": 40.443804,
+      "lon": -79.940033,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27574237"
+      ]
+    },
+    {
+      "id": "facilities-management-services-building",
+      "name": "Facilities Management Services Building",
+      "code": "FMSB",
+      "codeSource": "derived",
+      "aliases": [
+        "facilities management services building",
+        "facilities management services",
+        "facilities",
+        "fmsb"
+      ],
+      "lat": 40.443314,
+      "lon": -79.946439,
+      "levels": 3,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27590940"
+      ]
+    },
+    {
+      "id": "fairfax-apartments",
+      "name": "Fairfax Apartments",
+      "code": "FA",
+      "codeSource": "derived",
+      "aliases": [
+        "fairfax apartments",
+        "fairfax",
+        "fa"
+      ],
+      "lat": 40.446707,
+      "lon": -79.948118,
+      "levels": 9,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/152567349"
+      ]
+    },
+    {
+      "id": "fifth-and-clyde-residence-hall",
+      "name": "Fifth and Clyde Residence Hall",
+      "code": "FCRH",
+      "codeSource": "derived",
+      "aliases": [
+        "fifth and clyde residence hall",
+        "fifth and clyde residence",
+        "fifth",
+        "fcrh"
+      ],
+      "lat": 40.447592,
+      "lon": -79.945815,
+      "levels": 6,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/1007453778"
+      ]
+    },
+    {
+      "id": "fifth-neville-apartments",
+      "name": "Fifth Neville Apartments",
+      "code": "FNA",
+      "codeSource": "derived",
+      "aliases": [
+        "fifth neville apartments",
+        "fifth",
+        "fna"
+      ],
+      "lat": 40.447455,
+      "lon": -79.946737,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/545283450"
+      ]
+    },
+    {
+      "id": "forbes-beeler-apartments",
+      "name": "Forbes Beeler Apartments",
+      "code": "FBA",
+      "codeSource": "derived",
+      "aliases": [
+        "forbes beeler apartments",
+        "forbes",
+        "fba"
+      ],
+      "lat": 40.444314,
+      "lon": -79.939595,
+      "levels": 4,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/1203786280"
+      ]
+    },
+    {
+      "id": "forbes-craig-apartments",
+      "name": "Forbes-Craig Apartments",
+      "code": "FCA",
+      "codeSource": "derived",
+      "aliases": [
+        "forbes-craig apartments",
+        "forbes",
+        "fca"
+      ],
+      "lat": 40.444542,
+      "lon": -79.949164,
+      "levels": 6,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/810153981"
+      ]
+    },
+    {
+      "id": "frick-fine-arts-building",
+      "name": "Frick Fine Arts Building",
+      "code": "FFAB",
+      "codeSource": "derived",
+      "aliases": [
+        "frick fine arts building",
+        "frick fine arts",
+        "frick",
+        "ffab"
+      ],
+      "lat": 40.441567,
+      "lon": -79.951059,
+      "levels": 2,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/810149910"
+      ]
+    },
+    {
+      "id": "gates-and-hillman-centers",
+      "name": "Gates and Hillman Centers",
+      "code": "GHC",
+      "codeSource": "curated",
+      "aliases": [
+        "gates and hillman centers",
+        "gates and hillman",
+        "gates",
+        "ghc",
+        "hillman"
+      ],
+      "lat": 40.443557,
+      "lon": -79.944651,
+      "levels": 9,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27623372"
+      ]
+    },
+    {
+      "id": "hall-of-the-arts",
+      "name": "Hall of the Arts",
+      "code": "HA2",
+      "codeSource": "derived",
+      "aliases": [
+        "hall of the arts",
+        "hall",
+        "ha"
+      ],
+      "lat": 40.440921,
+      "lon": -79.942551,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/1002857138"
+      ]
+    },
+    {
+      "id": "hamburg-hall",
+      "name": "Hamburg Hall",
+      "code": "HBH",
+      "codeSource": "curated",
+      "aliases": [
+        "hamburg hall",
+        "hamburg",
+        "hh",
+        "hbh"
+      ],
+      "lat": 40.444176,
+      "lon": -79.945548,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27591096"
+      ]
+    },
+    {
+      "id": "hamerschlag-hall",
+      "name": "Hamerschlag Hall",
+      "code": "HH",
+      "codeSource": "curated",
+      "aliases": [
+        "hamerschlag hall",
+        "hamerschlag",
+        "hh",
+        "ham"
+      ],
+      "lat": 40.442406,
+      "lon": -79.946686,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27551077"
+      ]
+    },
+    {
+      "id": "hamerschlag-house",
+      "name": "Hamerschlag House",
+      "code": "HH2",
+      "codeSource": "derived",
+      "aliases": [
+        "hamerschlag house",
+        "hamerschlag",
+        "hh"
+      ],
+      "lat": 40.441309,
+      "lon": -79.938933,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27591466"
+      ]
+    },
+    {
+      "id": "heinz-memorial-chapel",
+      "name": "Heinz Memorial Chapel",
+      "code": "HMC",
+      "codeSource": "derived",
+      "aliases": [
+        "heinz memorial chapel",
+        "heinz",
+        "hmc"
+      ],
+      "lat": 40.445254,
+      "lon": -79.95187,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/30678681"
+      ]
+    },
+    {
+      "id": "henderson-house",
+      "name": "Henderson House",
+      "code": "HH3",
+      "codeSource": "derived",
+      "aliases": [
+        "henderson house",
+        "henderson",
+        "hh"
+      ],
+      "lat": 40.441003,
+      "lon": -79.939255,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27591488"
+      ]
+    },
+    {
+      "id": "highland-apartments",
+      "name": "Highland Apartments",
+      "code": "HA",
+      "codeSource": "derived",
+      "aliases": [
+        "highland apartments",
+        "highland",
+        "ha"
+      ],
+      "lat": 40.448328,
+      "lon": -79.946337,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/545283486"
+      ]
+    },
+    {
+      "id": "highmark-center",
+      "name": "Highmark Center",
+      "code": "HC",
+      "codeSource": "derived",
+      "aliases": [
+        "highmark center",
+        "highmark",
+        "hc"
+      ],
+      "lat": 40.440967,
+      "lon": -79.941393,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/1039908831"
+      ]
+    },
+    {
+      "id": "holy-spirit-byzantine-catholic-church",
+      "name": "Holy Spirit Byzantine Catholic Church",
+      "code": "HSBC",
+      "codeSource": "derived",
+      "aliases": [
+        "holy spirit byzantine catholic church",
+        "holy",
+        "hsbcc"
+      ],
+      "lat": 40.447604,
+      "lon": -79.9445,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/118675283"
+      ]
+    },
+    {
+      "id": "holy-spirit-byzantine-church",
+      "name": "Holy Spirit Byzantine Church",
+      "code": "HSBC2",
+      "codeSource": "derived",
+      "aliases": [
+        "holy spirit byzantine church",
+        "holy",
+        "hsbc"
+      ],
+      "lat": 40.447562,
+      "lon": -79.944861,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/118675284"
+      ]
+    },
+    {
+      "id": "hunt-library",
+      "name": "Hunt Library",
+      "code": "HL",
+      "codeSource": "curated",
+      "aliases": [
+        "hunt library",
+        "hunt",
+        "hl"
+      ],
+      "lat": 40.44111,
+      "lon": -79.94374,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27574204"
+      ]
+    },
+    {
+      "id": "information-networking-institute",
+      "name": "Information Networking Institute",
+      "code": "INI",
+      "codeSource": "derived",
+      "aliases": [
+        "information networking institute",
+        "information networking",
+        "information",
+        "ini"
+      ],
+      "lat": 40.446058,
+      "lon": -79.948022,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/44156184"
+      ]
+    },
+    {
+      "id": "joan-of-arc-building",
+      "name": "Joan of Arc Building",
+      "code": "JAB",
+      "codeSource": "derived",
+      "aliases": [
+        "joan of arc building",
+        "joan of arc",
+        "joan",
+        "jab"
+      ],
+      "lat": 40.448331,
+      "lon": -79.949057,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/172948430"
+      ]
+    },
+    {
+      "id": "joseph-stern-building",
+      "name": "Joseph Stern Building",
+      "code": "JSB",
+      "codeSource": "derived",
+      "aliases": [
+        "joseph stern building",
+        "joseph stern",
+        "joseph",
+        "jsb"
+      ],
+      "lat": 40.444681,
+      "lon": -79.948331,
+      "levels": 3,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/172661098"
+      ]
+    },
+    {
+      "id": "log-cabin",
+      "name": "Log Cabin",
+      "code": "LC",
+      "codeSource": "derived",
+      "aliases": [
+        "log cabin",
+        "log",
+        "lc"
+      ],
+      "lat": 40.443874,
+      "lon": -79.951978,
+      "levels": 1,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/154258438"
+      ]
+    },
+    {
+      "id": "lutheran-university-center",
+      "name": "Lutheran University Center",
+      "code": "LUC",
+      "codeSource": "derived",
+      "aliases": [
+        "lutheran university center",
+        "lutheran university",
+        "lutheran",
+        "luc"
+      ],
+      "lat": 40.444419,
+      "lon": -79.949475,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/121054525"
+      ]
+    },
+    {
+      "id": "mansions-on-fifth-hotel",
+      "name": "Mansions On Fifth Hotel",
+      "code": "MOFH",
+      "codeSource": "derived",
+      "aliases": [
+        "mansions on fifth hotel",
+        "mansions",
+        "mofh"
+      ],
+      "lat": 40.448118,
+      "lon": -79.938355,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/545280741"
+      ]
+    },
+    {
+      "id": "margaret-morrison-apartments",
+      "name": "Margaret Morrison Apartments",
+      "code": "MMA",
+      "codeSource": "derived",
+      "aliases": [
+        "margaret morrison apartments",
+        "margaret",
+        "mma"
+      ],
+      "lat": 40.441756,
+      "lon": -79.938493,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27591681"
+      ]
+    },
+    {
+      "id": "margaret-morrison-carnegie-hall",
+      "name": "Margaret Morrison Carnegie Hall",
+      "code": "MM",
+      "codeSource": "curated",
+      "aliases": [
+        "margaret morrison carnegie hall",
+        "margaret morrison carnegie",
+        "margaret",
+        "mmch",
+        "mm",
+        "margaret morrison"
+      ],
+      "lat": 40.44223,
+      "lon": -79.941481,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27591314"
+      ]
+    },
+    {
+      "id": "mcgill-house",
+      "name": "McGill House",
+      "code": "MH",
+      "codeSource": "derived",
+      "aliases": [
+        "mcgill house",
+        "mcgill",
+        "mh"
+      ],
+      "lat": 40.441726,
+      "lon": -79.939028,
+      "levels": 4,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27591456"
+      ]
+    },
+    {
+      "id": "mellon-institute",
+      "name": "Mellon Institute",
+      "code": "MI",
+      "codeSource": "curated",
+      "aliases": [
+        "mellon institute",
+        "mellon",
+        "mi"
+      ],
+      "lat": 40.446106,
+      "lon": -79.951099,
+      "levels": 4,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/25795368"
+      ]
+    },
+    {
+      "id": "michael-j-feigel-dmd-llc",
+      "name": "Michael J. Feigel, DMD LLC",
+      "code": "MJFD",
+      "codeSource": "derived",
+      "aliases": [
+        "michael j. feigel, dmd llc",
+        "michael",
+        "mjfdl"
+      ],
+      "lat": 40.445917,
+      "lon": -79.948654,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/173057618"
+      ]
+    },
+    {
+      "id": "morewood-e-tower",
+      "name": "Morewood E-Tower",
+      "code": "MET",
+      "codeSource": "derived",
+      "aliases": [
+        "morewood e-tower",
+        "morewood",
+        "met"
+      ],
+      "lat": 40.445067,
+      "lon": -79.943351,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/1002531075"
+      ]
+    },
+    {
+      "id": "morewood-gardens",
+      "name": "Morewood Gardens",
+      "code": "MG",
+      "codeSource": "derived",
+      "aliases": [
+        "morewood gardens",
+        "morewood",
+        "mg"
+      ],
+      "lat": 40.445544,
+      "lon": -79.943088,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/544174675"
+      ]
+    },
+    {
+      "id": "mudge-house-a-building",
+      "name": "Mudge House A Building",
+      "code": "MHAB",
+      "codeSource": "derived",
+      "aliases": [
+        "mudge house a building",
+        "mudge house a",
+        "mudge",
+        "mhab"
+      ],
+      "lat": 40.446922,
+      "lon": -79.942674,
+      "levels": 3,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27591703"
+      ]
+    },
+    {
+      "id": "mudge-house-b-building",
+      "name": "Mudge House B Building",
+      "code": "MHBB",
+      "codeSource": "derived",
+      "aliases": [
+        "mudge house b building",
+        "mudge house b",
+        "mudge",
+        "mhbb"
+      ],
+      "lat": 40.447149,
+      "lon": -79.943032,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27591706"
+      ]
+    },
+    {
+      "id": "mudge-house-c-building",
+      "name": "Mudge House C Building",
+      "code": "MHCB",
+      "codeSource": "derived",
+      "aliases": [
+        "mudge house c building",
+        "mudge house c",
+        "mudge",
+        "mhcb"
+      ],
+      "lat": 40.446681,
+      "lon": -79.943007,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27591702"
+      ]
+    },
+    {
+      "id": "neville-house",
+      "name": "Neville House",
+      "code": "NH",
+      "codeSource": "derived",
+      "aliases": [
+        "neville house",
+        "neville",
+        "nh"
+      ],
+      "lat": 40.448555,
+      "lon": -79.948497,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/543159674"
+      ]
+    },
+    {
+      "id": "newell-simon-hall",
+      "name": "Newell-Simon Hall",
+      "code": "NSH",
+      "codeSource": "curated",
+      "aliases": [
+        "newell-simon hall",
+        "newell-simon",
+        "newell",
+        "nsh",
+        "simon"
+      ],
+      "lat": 40.443381,
+      "lon": -79.945603,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27551590"
+      ]
+    },
+    {
+      "id": "park-mansions",
+      "name": "Park Mansions",
+      "code": "PM",
+      "codeSource": "derived",
+      "aliases": [
+        "park mansions",
+        "park",
+        "pm"
+      ],
+      "lat": 40.440552,
+      "lon": -79.940977,
+      "levels": 10,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/544174646"
+      ]
+    },
+    {
+      "id": "park-plaza",
+      "name": "Park Plaza",
+      "code": "PP",
+      "codeSource": "derived",
+      "aliases": [
+        "park plaza",
+        "park",
+        "pp"
+      ],
+      "lat": 40.447991,
+      "lon": -79.948668,
+      "levels": 9,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/167498538"
+      ]
+    },
+    {
+      "id": "pepper-space",
+      "name": "Pepper Space",
+      "code": "PS",
+      "codeSource": "derived",
+      "aliases": [
+        "pepper space",
+        "pepper",
+        "ps"
+      ],
+      "lat": 40.444681,
+      "lon": -79.948195,
+      "levels": 1,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/172658860"
+      ]
+    },
+    {
+      "id": "phipps-conservatory",
+      "name": "Phipps Conservatory",
+      "code": "PC",
+      "codeSource": "derived",
+      "aliases": [
+        "phipps conservatory",
+        "phipps",
+        "pc"
+      ],
+      "lat": 40.438929,
+      "lon": -79.947883,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "relation/2785563",
+        "relation/18260908"
+      ]
+    },
+    {
+      "id": "pittsburgh-golf-club",
+      "name": "Pittsburgh Golf Club",
+      "code": "PGC",
+      "codeSource": "derived",
+      "aliases": [
+        "pittsburgh golf club",
+        "pittsburgh",
+        "pgc"
+      ],
+      "lat": 40.440076,
+      "lon": -79.939083,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/544173624",
+        "way/544173665"
+      ]
+    },
+    {
+      "id": "pittsburgh-public-schools-administrative-building",
+      "name": "Pittsburgh Public Schools Administrative Building",
+      "code": "PPSA",
+      "codeSource": "derived",
+      "aliases": [
+        "pittsburgh public schools administrative building",
+        "pittsburgh public schools administrative",
+        "pittsburgh",
+        "ppsab"
+      ],
+      "lat": 40.444677,
+      "lon": -79.950721,
+      "levels": 5,
+      "floorHeightM": null,
+      "osmIds": [
+        "relation/2311531"
+      ]
+    },
+    {
+      "id": "pnc-bank",
+      "name": "PNC Bank",
+      "code": "PB",
+      "codeSource": "derived",
+      "aliases": [
+        "pnc bank",
+        "pnc",
+        "pb"
+      ],
+      "lat": 40.446654,
+      "lon": -79.948675,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/34264357"
+      ]
+    },
+    {
+      "id": "porter-hall",
+      "name": "Porter Hall",
+      "code": "PH",
+      "codeSource": "curated",
+      "aliases": [
+        "porter hall",
+        "porter",
+        "ph"
+      ],
+      "lat": 40.441727,
+      "lon": -79.946291,
+      "levels": 3,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27549961"
+      ]
+    },
+    {
+      "id": "posner-hall",
+      "name": "Posner Hall",
+      "code": "POS",
+      "codeSource": "curated",
+      "aliases": [
+        "posner hall",
+        "posner",
+        "ph",
+        "pos"
+      ],
+      "lat": 40.441268,
+      "lon": -79.942144,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27591241"
+      ]
+    },
+    {
+      "id": "purnell-center-for-the-arts",
+      "name": "Purnell Center for the Arts",
+      "code": "PCA",
+      "codeSource": "curated",
+      "aliases": [
+        "purnell center for the arts",
+        "purnell",
+        "pca"
+      ],
+      "lat": 40.443532,
+      "lon": -79.94354,
+      "levels": 3,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27574406"
+      ]
+    },
+    {
+      "id": "rand-building",
+      "name": "Rand Building",
+      "code": "RB",
+      "codeSource": "derived",
+      "aliases": [
+        "rand building",
+        "rand",
+        "rb"
+      ],
+      "lat": 40.446589,
+      "lon": -79.949316,
+      "levels": 6,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/44150736"
+      ]
+    },
+    {
+      "id": "residence-on-fifth",
+      "name": "Residence on Fifth",
+      "code": "ROF",
+      "codeSource": "derived",
+      "aliases": [
+        "residence on fifth",
+        "residence",
+        "rof"
+      ],
+      "lat": 40.44687,
+      "lon": -79.946786,
+      "levels": 6,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/739910512"
+      ]
+    },
+    {
+      "id": "resnik-house",
+      "name": "Resnik House",
+      "code": "RH",
+      "codeSource": "derived",
+      "aliases": [
+        "resnik house",
+        "resnik",
+        "rh"
+      ],
+      "lat": 40.442512,
+      "lon": -79.940019,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27591352"
+      ]
+    },
+    {
+      "id": "roberts-engineering-hall",
+      "name": "Roberts Engineering Hall",
+      "code": "REH",
+      "codeSource": "curated",
+      "aliases": [
+        "roberts engineering hall",
+        "roberts engineering",
+        "roberts",
+        "reh"
+      ],
+      "lat": 40.442455,
+      "lon": -79.94722,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27590641"
+      ]
+    },
+    {
+      "id": "rodef-shalom-congregation",
+      "name": "Rodef Shalom Congregation",
+      "code": "RSC",
+      "codeSource": "derived",
+      "aliases": [
+        "rodef shalom congregation",
+        "rodef",
+        "rsc"
+      ],
+      "lat": 40.447898,
+      "lon": -79.943367,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/158307506"
+      ]
+    },
+    {
+      "id": "saint-paul-cathedral-parish",
+      "name": "Saint Paul Cathedral Parish",
+      "code": "SPCP",
+      "codeSource": "derived",
+      "aliases": [
+        "saint paul cathedral parish",
+        "saint",
+        "spcp"
+      ],
+      "lat": 40.447367,
+      "lon": -79.949805,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/104431158"
+      ]
+    },
+    {
+      "id": "scaife-hall",
+      "name": "Scaife Hall",
+      "code": "SH",
+      "codeSource": "curated",
+      "aliases": [
+        "scaife hall",
+        "scaife",
+        "sh"
+      ],
+      "lat": 40.441675,
+      "lon": -79.947341,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27550292"
+      ]
+    },
+    {
+      "id": "schenley-park-caf-and-visitor-center",
+      "name": "Schenley Park Café and Visitor Center",
+      "code": "SPCV",
+      "codeSource": "derived",
+      "aliases": [
+        "schenley park café and visitor center",
+        "schenley park café and visitor",
+        "schenley",
+        "spcvc"
+      ],
+      "lat": 40.438341,
+      "lon": -79.946492,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/305687963"
+      ]
+    },
+    {
+      "id": "scobell-house",
+      "name": "Scobell House",
+      "code": "SH2",
+      "codeSource": "derived",
+      "aliases": [
+        "scobell house",
+        "scobell",
+        "sh"
+      ],
+      "lat": 40.441347,
+      "lon": -79.939628,
+      "levels": 3,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27591482"
+      ]
+    },
+    {
+      "id": "scott-hall",
+      "name": "Scott Hall",
+      "code": "SCT",
+      "codeSource": "curated",
+      "aliases": [
+        "scott hall",
+        "scott",
+        "sh",
+        "sct"
+      ],
+      "lat": 40.44292,
+      "lon": -79.946761,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/1444791398",
+        "relation/13441031"
+      ]
+    },
+    {
+      "id": "seoul-mart",
+      "name": "Seoul Mart",
+      "code": "SM",
+      "codeSource": "derived",
+      "aliases": [
+        "seoul mart",
+        "seoul",
+        "sm"
+      ],
+      "lat": 40.447244,
+      "lon": -79.947192,
+      "levels": 2,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/1010489527"
+      ]
+    },
+    {
+      "id": "shady-oak-apartments",
+      "name": "Shady Oak Apartments",
+      "code": "SOA",
+      "codeSource": "derived",
+      "aliases": [
+        "shady oak apartments",
+        "shady",
+        "soa"
+      ],
+      "lat": 40.448832,
+      "lon": -79.94631,
+      "levels": 4,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/545283508"
+      ]
+    },
+    {
+      "id": "smith-hall",
+      "name": "Smith Hall",
+      "code": "SMH",
+      "codeSource": "curated",
+      "aliases": [
+        "smith hall",
+        "smith",
+        "sh",
+        "smh"
+      ],
+      "lat": 40.443966,
+      "lon": -79.945535,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27591104"
+      ]
+    },
+    {
+      "id": "software-engineering-institute",
+      "name": "Software Engineering Institute",
+      "code": "SEI",
+      "codeSource": "derived",
+      "aliases": [
+        "software engineering institute",
+        "software engineering",
+        "software",
+        "sei"
+      ],
+      "lat": 40.446278,
+      "lon": -79.950075,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/44150733"
+      ]
+    },
+    {
+      "id": "spirit-house",
+      "name": "Spirit House",
+      "code": "SH3",
+      "codeSource": "derived",
+      "aliases": [
+        "spirit house",
+        "spirit",
+        "sh"
+      ],
+      "lat": 40.44233,
+      "lon": -79.93793,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27591497"
+      ]
+    },
+    {
+      "id": "st-nicholas-greek-orthodox-cathedral",
+      "name": "St Nicholas Greek Orthodox Cathedral",
+      "code": "SNGO",
+      "codeSource": "derived",
+      "aliases": [
+        "st nicholas greek orthodox cathedral",
+        "st",
+        "sngoc"
+      ],
+      "lat": 40.444712,
+      "lon": -79.949932,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/121054622"
+      ]
+    },
+    {
+      "id": "st-paul-cathedral-center-synod-hall",
+      "name": "St. Paul Cathedral Center & Synod Hall",
+      "code": "SPCC",
+      "codeSource": "derived",
+      "aliases": [
+        "st. paul cathedral center & synod hall",
+        "st. paul cathedral center & synod",
+        "st",
+        "spccsh"
+      ],
+      "lat": 40.447759,
+      "lon": -79.950092,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/104431159"
+      ]
+    },
+    {
+      "id": "st-paul-cathedral-rectory",
+      "name": "St. Paul Cathedral Rectory",
+      "code": "SPCR",
+      "codeSource": "derived",
+      "aliases": [
+        "st. paul cathedral rectory",
+        "st",
+        "spcr"
+      ],
+      "lat": 40.447193,
+      "lon": -79.950514,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/104431161"
+      ]
+    },
+    {
+      "id": "starbucks",
+      "name": "Starbucks",
+      "code": "S2",
+      "codeSource": "derived",
+      "aliases": [
+        "starbucks"
+      ],
+      "lat": 40.444602,
+      "lon": -79.948522,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/1306720931"
+      ]
+    },
+    {
+      "id": "stever-house",
+      "name": "Stever House",
+      "code": "SH4",
+      "codeSource": "derived",
+      "aliases": [
+        "stever house",
+        "stever",
+        "sh"
+      ],
+      "lat": 40.446295,
+      "lon": -79.942661,
+      "levels": 5,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27591700"
+      ]
+    },
+    {
+      "id": "subway",
+      "name": "Subway",
+      "code": "S",
+      "codeSource": "derived",
+      "aliases": [
+        "subway"
+      ],
+      "lat": 40.444723,
+      "lon": -79.948925,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/272917029"
+      ]
+    },
+    {
+      "id": "tartans-pavilion",
+      "name": "Tartans Pavilion",
+      "code": "TP",
+      "codeSource": "derived",
+      "aliases": [
+        "tartans pavilion",
+        "tartans",
+        "tp"
+      ],
+      "lat": 40.442641,
+      "lon": -79.940075,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/1000419332"
+      ]
+    },
+    {
+      "id": "tcs-hall",
+      "name": "TCS Hall",
+      "code": "TH2",
+      "codeSource": "derived",
+      "aliases": [
+        "tcs hall",
+        "tcs",
+        "th"
+      ],
+      "lat": 40.444934,
+      "lon": -79.947227,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/946491335"
+      ]
+    },
+    {
+      "id": "tech-house",
+      "name": "Tech House",
+      "code": "TH",
+      "codeSource": "derived",
+      "aliases": [
+        "tech house",
+        "tech",
+        "th"
+      ],
+      "lat": 40.441925,
+      "lon": -79.937871,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27591602"
+      ]
+    },
+    {
+      "id": "tepper-school-of-business",
+      "name": "Tepper School of Business",
+      "code": "TEP",
+      "codeSource": "curated",
+      "aliases": [
+        "tepper school of business",
+        "tepper",
+        "tsb",
+        "tep"
+      ],
+      "lat": 40.44513,
+      "lon": -79.945369,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/583510520"
+      ]
+    },
+    {
+      "id": "the-atrium",
+      "name": "The Atrium",
+      "code": "A",
+      "codeSource": "derived",
+      "aliases": [
+        "the atrium",
+        "atrium"
+      ],
+      "lat": 40.445471,
+      "lon": -79.94995,
+      "levels": 8,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/855155659"
+      ]
+    },
+    {
+      "id": "the-brother-s-house",
+      "name": "The Brother's House",
+      "code": "BSH",
+      "codeSource": "derived",
+      "aliases": [
+        "the brother's house",
+        "the brother's",
+        "brother",
+        "bsh"
+      ],
+      "lat": 40.446527,
+      "lon": -79.946222,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/544174672"
+      ]
+    },
+    {
+      "id": "union-grill",
+      "name": "Union Grill",
+      "code": "UG",
+      "codeSource": "derived",
+      "aliases": [
+        "union grill",
+        "union",
+        "ug"
+      ],
+      "lat": 40.444834,
+      "lon": -79.948431,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/172662341"
+      ]
+    },
+    {
+      "id": "university-pittsburgh-childhood-development-center",
+      "name": "University Pittsburgh Childhood Development Center",
+      "code": "UPCD",
+      "codeSource": "derived",
+      "aliases": [
+        "university pittsburgh childhood development center",
+        "university pittsburgh childhood development",
+        "university",
+        "upcdc"
+      ],
+      "lat": 40.448282,
+      "lon": -79.945132,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/545283446"
+      ]
+    },
+    {
+      "id": "university-square",
+      "name": "University Square",
+      "code": "US",
+      "codeSource": "derived",
+      "aliases": [
+        "university square",
+        "university",
+        "us"
+      ],
+      "lat": 40.447485,
+      "lon": -79.948335,
+      "levels": 10,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/167499007"
+      ]
+    },
+    {
+      "id": "university-technology-development-center",
+      "name": "University Technology Development Center",
+      "code": "UTDC",
+      "codeSource": "derived",
+      "aliases": [
+        "university technology development center",
+        "university technology development",
+        "university",
+        "utdc"
+      ],
+      "lat": 40.446043,
+      "lon": -79.949572,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/29094259"
+      ]
+    },
+    {
+      "id": "warner-hall",
+      "name": "Warner Hall",
+      "code": "WWG",
+      "codeSource": "curated",
+      "aliases": [
+        "warner hall",
+        "warner",
+        "wh",
+        "wwg"
+      ],
+      "lat": 40.444177,
+      "lon": -79.943391,
+      "levels": 6,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27574704"
+      ]
+    },
+    {
+      "id": "warwick-plaza",
+      "name": "Warwick Plaza",
+      "code": "WP",
+      "codeSource": "derived",
+      "aliases": [
+        "warwick plaza",
+        "warwick",
+        "wp"
+      ],
+      "lat": 40.447288,
+      "lon": -79.939897,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/166507535"
+      ]
+    },
+    {
+      "id": "wean-hall",
+      "name": "Wean Hall",
+      "code": "WEH",
+      "codeSource": "curated",
+      "aliases": [
+        "wean hall",
+        "wean",
+        "wh",
+        "weh"
+      ],
+      "lat": 40.442667,
+      "lon": -79.94581,
+      "levels": 8,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27551364"
+      ]
+    },
+    {
+      "id": "welch-house",
+      "name": "Welch House",
+      "code": "WH",
+      "codeSource": "derived",
+      "aliases": [
+        "welch house",
+        "welch",
+        "wh"
+      ],
+      "lat": 40.441153,
+      "lon": -79.939489,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27591484"
+      ]
+    },
+    {
+      "id": "west-wing",
+      "name": "West Wing",
+      "code": "WW",
+      "codeSource": "derived",
+      "aliases": [
+        "west wing",
+        "west",
+        "ww"
+      ],
+      "lat": 40.442733,
+      "lon": -79.940837,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27591351"
+      ]
+    },
+    {
+      "id": "woodlawn-apartments",
+      "name": "Woodlawn Apartments",
+      "code": "WA",
+      "codeSource": "derived",
+      "aliases": [
+        "woodlawn apartments",
+        "woodlawn",
+        "wa"
+      ],
+      "lat": 40.442442,
+      "lon": -79.937717,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/27591503"
+      ]
+    },
+    {
+      "id": "wqed",
+      "name": "WQED",
+      "code": "W",
+      "codeSource": "derived",
+      "aliases": [
+        "wqed"
+      ],
+      "lat": 40.44673,
+      "lon": -79.944703,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/544174673"
+      ]
+    },
+    {
+      "id": "zupanic-family-stem-center",
+      "name": "Zupanic Family STEM Center",
+      "code": "ZFSC",
+      "codeSource": "derived",
+      "aliases": [
+        "zupanic family stem center",
+        "zupanic family stem",
+        "zupanic",
+        "zfsc"
+      ],
+      "lat": 40.446377,
+      "lon": -79.946667,
+      "levels": null,
+      "floorHeightM": null,
+      "osmIds": [
+        "way/879491687"
+      ]
+    }
+  ]
+}
