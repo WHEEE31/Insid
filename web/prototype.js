@@ -24,6 +24,7 @@ import { annotateFloors } from "./pipeline/floors.js";
 import { buildGraph, route as routeGraph, splitOnTrackingLoss } from "./pipeline/graph.js";
 import { loadBuildings, resolveBuilding, buildingsNear } from "./pipeline/buildings.js";
 import { annotateBuildingFloors } from "./pipeline/building-floors.js";
+import { refineGraph, snapToRefined, routeRefined } from "./pipeline/refine.js";
 import * as WA from "./pipeline/world-align.js";
 
 const NORTH_TOLERANCE_DEG = 12;
@@ -37,7 +38,7 @@ const S = {
   stage: "start",
   source: "…",
   walks: [], nodes: [], nodesGeo: [], nodesById: {}, buildings: [],
-  graph: null, campus: null, frameGeoref: null, floorLinks: [], floorHeights: {},
+  graph: null, refined: null, showRaw: true, campus: null, frameGeoref: null, floorLinks: [], floorHeights: {},
   sim: {
     heading: 137, x: 0, z: 0,
     buildingId: null, floor: 1, altitude: 0,
@@ -63,6 +64,20 @@ const offNorth = (h) => { const d = norm360(h); return d > 180 ? d - 360 : d; };
 function log(msg) {
   S.log.unshift(`${new Date().toLocaleTimeString().slice(0, 8)} ${msg}`);
   S.log = S.log.slice(0, 60);
+}
+
+// Standalone UI feedback for "something just happened" moments (a landmark
+// drop, a crossing). Lives outside #screen in the DOM so a re-render never
+// wipes it mid-animation; touches no app/recording state, purely cosmetic.
+let toastTimer = null;
+function toast(msg) {
+  const el = document.getElementById("toast");
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 1300);
+  navigator.vibrate?.(24);
 }
 
 // ---------------------------------------------------------------------------
@@ -146,6 +161,9 @@ function rebuild() {
   S.floorHeights = res.floorHeights;
   if (legacy.length) annotateFloors(legacy);
   S.graph = buildGraph(fragments);
+  // The wayfinder routes over the REFINED graph, not the raw trace cells —
+  // see web/pipeline/refine.js for why.
+  S.refined = refineGraph(S.graph);
 }
 
 function simGps() {
@@ -524,8 +542,9 @@ function drawMap(canvas) {
     }
   }
 
-  if (S.graph) {
-    ctx.strokeStyle = "rgba(120, 190, 230, 0.3)";
+  // raw trace cells, faint — evidence, not structure
+  if (S.graph && S.showRaw) {
+    ctx.strokeStyle = "rgba(120, 190, 230, 0.16)";
     ctx.lineWidth = 1;
     for (const e of S.graph.edges.values()) {
       const a = S.graph.nodes.get(e.a), b = S.graph.nodes.get(e.b);
@@ -533,13 +552,34 @@ function drawMap(canvas) {
       ctx.beginPath(); ctx.moveTo(px(a.x), py(a.z)); ctx.lineTo(px(b.x), py(b.z)); ctx.stroke();
     }
   }
+  // the refined graph, drawn as the real map: thickness follows evidence
+  if (S.refined) {
+    for (const e of S.refined.edges.values()) {
+      ctx.strokeStyle = e.vertical ? "rgba(251,191,36,0.85)" : "rgba(125,232,247,0.8)";
+      ctx.lineWidth = Math.min(4, 1.2 + Math.log2(1 + e.evidence) * 0.5);
+      ctx.beginPath();
+      e.polyline.forEach((p, i) => (i ? ctx.lineTo(px(p.x), py(p.z)) : ctx.moveTo(px(p.x), py(p.z))));
+      ctx.stroke();
+    }
+    for (const n of S.refined.nodes.values()) {
+      if (n.kind === "corridor") continue;
+      ctx.fillStyle = n.kind === "junction" ? "#eafdff" : n.kind === "portal" ? "#fbbf24" : "rgba(125,232,247,0.7)";
+      ctx.beginPath(); ctx.arc(px(n.x), py(n.z), n.kind === "junction" ? 3.4 : 2.6, 0, Math.PI * 2); ctx.fill();
+    }
+  }
 
   const r = S.user.result;
-  if (r && r.nodes.length > 1) {
-    ctx.strokeStyle = "#eafdff"; ctx.lineWidth = 2.5;
+  if (r && r.polyline && r.polyline.length > 1) {
+    ctx.strokeStyle = "#eafdff"; ctx.lineWidth = 3;
     ctx.beginPath();
-    r.nodes.forEach((n, i) => (i ? ctx.lineTo(px(n.x), py(n.z)) : ctx.moveTo(px(n.x), py(n.z))));
+    r.polyline.forEach((p, i) => (i ? ctx.lineTo(px(p.x), py(p.z)) : ctx.moveTo(px(p.x), py(p.z))));
     ctx.stroke();
+    // where the endpoints snapped ONTO the refined graph
+    for (const s of [r.snapFrom, r.snapTo]) {
+      if (!s) continue;
+      ctx.strokeStyle = "rgba(52,224,122,0.9)"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(px(s.point.x), py(s.point.z), 5, 0, Math.PI * 2); ctx.stroke();
+    }
   }
 
   if (S.rec && S.rec.points.length > 1) {
@@ -723,13 +763,13 @@ const screens = {
       <div style="text-align:center"><span class="pill">DATA COLLECTOR</span></div>
       <div class="spacer"></div>
       <div style="text-align:center">
-        <button class="big" id="go" style="width:184px;height:184px;border-radius:50%;font-size:19px;line-height:1.25">
-          🧭<br/>Start<br/>Mapping
+        <button class="big" id="go" style="width:184px;height:184px;border-radius:50%;font-size:18px;line-height:1.3">
+          Start<br/>Mapping
         </button>
         <div class="sub" style="margin-top:20px">Start at a building entrance,<br/>finish at one too.</div>
       </div>
       <div class="spacer"></div>
-      <div class="note">
+      <div class="note" tabindex="0">
         Every path is anchored by GPS at both ends and by facing north at the
         start — that's what lets separate walks line up on one campus map.
       </div>
@@ -749,11 +789,11 @@ const screens = {
     label: "COLLECTOR · GPS LOCK",
     html: `
       <h2 class="title">Step outside</h2>
-      <div class="sub">Stand just outside the entrance you're about to use. Indoors the fix is too poor to anchor a path.</div>
+      <div class="note" tabindex="0">Stand just outside the entrance you're about to use — indoors the fix is too poor to anchor a path.</div>
       ${signalBlock("Walk out until the dot turns green.")}
       <canvas id="map" class="map" data-h="140" data-scale="1.6"></canvas>
       <div class="spacer"></div>
-      <button class="ghost" id="outside">🚪 Step outside (simulate)</button>
+      <button class="ghost" id="outside">Step outside (simulated)</button>
       <button class="big" id="sig-continue" disabled>Continue</button>
       <button class="ghost" id="back">Back</button>`,
     wire: () => {
@@ -785,7 +825,7 @@ const screens = {
     label: "COLLECTOR · NORTH",
     html: `
       <h2 class="title">Face north</h2>
-      <div class="sub">Turn until the marker lines up with N. This fixes the path's rotation — the compass alone is off by 15–25° indoors.</div>
+      <div class="note" tabindex="0">Turn until the marker lines up with N — this fixes the path's rotation, since the compass alone is off by 15–25° indoors.</div>
       <div class="compass-wrap">
         <canvas id="compass" class="compass"></canvas>
         <div class="heading-read" id="heading-read">—</div>
@@ -810,9 +850,9 @@ const screens = {
     html: `
       <div class="spacer"></div>
       <div style="text-align:center">
-        <div style="font-size:52px">✓</div>
-        <h2 class="title" style="margin-top:10px">You're set</h2>
-        <div class="sub">Start recording, then walk. Tell the app whenever you cross into a new building.</div>
+        <div style="font-size:40px;color:var(--green)">✓</div>
+        <h2 class="title" style="margin-top:6px">You're set</h2>
+        <div class="sub">Walk. Tell the app when you cross into a new building.</div>
       </div>
       <div class="summary">
         <div class="kv"><span>Entrance</span><b>${buildingName(S.sim.buildingId)}</b></div>
@@ -841,14 +881,15 @@ const screens = {
         <div class="stat"><b id="st-time">0s</b><span>TIME</span></div>
         <div class="stat"><b id="st-bldg">—</b><span>WHERE</span></div>
       </div>
-      <canvas id="map" class="map" data-h="240" data-scale="3.2"></canvas>
-      <button class="big" id="cross" style="background:var(--amber);color:#1a1204;margin-top:10px">
-        ⇄ I've entered a new building
-      </button>
-      <div class="sub" style="margin:10px 0 4px;font-size:11px">Landmark</div>
-      <div class="row">
-        ${["Door", "Stairs", "Elevator", "Room"].map((l) =>
-          `<button class="ghost" style="margin:0;font-size:11px;padding:8px 4px" data-lm="${l}">${l}</button>`).join("")}
+      <div class="map-wrap">
+        <canvas id="map" class="map" data-h="320" data-scale="3.2"></canvas>
+        <div class="map-overlay">
+          <div class="row">
+            ${["Door", "Stairs", "Elevator", "Room"].map((l) =>
+              `<button class="chip" data-lm="${l}">${l}</button>`).join("")}
+          </div>
+          <button class="chip chip-wide" id="cross">⇄ New building</button>
+        </div>
       </div>
       ${S.rec?.buildingTransitions.length ? `
         <div class="sub" style="margin-top:10px;font-size:11px">Crossings so far</div>
@@ -865,6 +906,7 @@ const screens = {
         b.onclick = () => {
           S.rec.landmarks.push({ name: b.dataset.lm, x: S.sim.x, z: S.sim.z, floor: S.sim.floor });
           log(`landmark: ${b.dataset.lm}`);
+          toast(`+ ${b.dataset.lm} added`);
           render();
         };
       });
@@ -891,8 +933,7 @@ const screens = {
       html: `
         <div class="spacer"></div>
         <div class="sheet">
-          <div style="font-size:34px;text-align:center">📍</div>
-          <h2 class="title" style="text-align:center;margin-top:6px">Finish outside if you can</h2>
+          <h2 class="title" style="text-align:center">Finish outside if you can</h2>
           <div class="sub" style="text-align:center">
             ${hasFix
               ? `Your last good GPS fix was <b style="color:var(--cyan-dim)">${Math.round(st.secondsAgo)}s ago</b>.
@@ -906,7 +947,7 @@ const screens = {
             <div class="kv"><span>Est. error at the end</span><b style="color:var(--amber)">≈ ${st.estDriftM.toFixed(1)} m</b></div>
             <div class="kv"><span>Fixable later?</span><b style="color:var(--red)">No</b></div>
           </div>
-          <div class="note" style="margin-top:10px">
+          <div class="note" tabindex="0" style="margin-top:10px">
             Stepping outside for a few seconds pins the end of the path and
             spreads the correction back over the whole walk. It can't be
             recovered afterwards.
@@ -931,14 +972,18 @@ const screens = {
     html: `
       <h2 class="title">New building</h2>
       ${buildingForm(`Leaving ${buildingName(S.sim.buildingId)} (floor ${S.sim.floor}). Check the signage — which building is this, and what floor does it call this level?`)}
-      <div class="note" style="margin-top:8px">
+      <div class="note" tabindex="0" style="margin-top:8px">
         Floors don't line up between buildings — a connector can put you on
         floor 4 of one and floor 2 of the next. That's why it asks.
       </div>
       <button class="big" id="form-go" ${S.form.selectedId ? "" : "disabled"}>Confirm crossing</button>
       <button class="ghost" id="back">Cancel</button>`,
     wire: () => {
-      wireBuildingForm((id, floor) => { declareTransition(id, floor); go("live"); });
+      wireBuildingForm((id, floor) => {
+        declareTransition(id, floor);
+        toast(`entered ${buildingName(id)} F${floor}`);
+        go("live");
+      });
       $("#back").onclick = () => go("live");
     },
   }),
@@ -947,11 +992,11 @@ const screens = {
     label: "COLLECTOR · FINISH OUTSIDE",
     html: `
       <h2 class="title">Head outside</h2>
-      <div class="sub">Finish at a building entrance so the path gets a second GPS anchor — that's what bounds the drift.</div>
+      <div class="note" tabindex="0">Finish at a building entrance so the path gets a second GPS anchor — that's what bounds the drift.</div>
       ${signalBlock("Still recording. Walk out until the dot turns green.")}
       <canvas id="map" class="map" data-h="130" data-scale="2.4"></canvas>
       <div class="spacer"></div>
-      <button class="ghost" id="outside">🚪 Step outside (simulate)</button>
+      <button class="ghost" id="outside">Step outside (simulated)</button>
       <button class="big" id="sig-continue" disabled>I'm at an entrance</button>
       <div class="row">
         <button class="ghost" id="back" style="margin-top:8px">Keep walking</button>
@@ -1012,7 +1057,7 @@ const screens = {
             : `<div class="kv"><span>Exit fix</span><b style="color:var(--amber)">none — ${
                  S.rec?.gpsFixes.length ? "using last mid-walk fix" : "unanchored end"}</b></div>`}
         </div>
-        ${!S.rec?.endEntrance ? `<div class="note" style="margin-top:8px;border-color:var(--amber)">
+        ${!S.rec?.endEntrance ? `<div class="note" tabindex="0" style="margin-top:8px;border-color:var(--amber)">
           Saving without an exit fix. The path is still kept and still useful —
           it just can't have its end drift corrected.
         </div>` : ""}
@@ -1079,8 +1124,14 @@ const screens = {
           const from = nearbyNodes(1)[0];
           const to = S.nodesById[S.user.destId];
           S.user.startId = from ? from.id : null;
-          S.user.result = from && to ? routeGraph(S.graph, from, to) : null;
-          log(S.user.result ? `route: ${S.user.result.length.toFixed(0)}m` : "no route found");
+          // Route over the refined graph, and snap onto an EDGE rather than
+          // the nearest raw cell — junctions are sparse by design.
+          S.user.result = from && to && S.refined
+            ? routeRefined(S.refined, from, to) : null;
+          const res = S.user.result;
+          log(res
+            ? `route ${res.lengthM.toFixed(0)}m · snapped ${res.snapFrom.distanceM.toFixed(1)}m / ${res.snapTo.distanceM.toFixed(1)}m onto the refined map`
+            : "no route found");
           go("route");
         };
       },
@@ -1099,8 +1150,8 @@ const screens = {
         <div class="sub">${from ? `from ${from.name || from.id}` : ""}</div>
         ${r ? `
           <div class="stats">
-            <div class="stat"><b>${r.length.toFixed(0)}m</b><span>DIST</span></div>
-            <div class="stat"><b>${Math.max(1, Math.round(r.length / 1.3 / 60))}min</b><span>WALK</span></div>
+            <div class="stat"><b>${r.lengthM.toFixed(0)}m</b><span>DIST</span></div>
+            <div class="stat"><b>${Math.max(1, Math.round(r.lengthM / 1.3 / 60))}min</b><span>WALK</span></div>
             <div class="stat"><b>${floors.length}</b><span>LEVELS</span></div>
           </div>
           <canvas id="map" class="map" data-h="280" data-scale="3"></canvas>
@@ -1119,27 +1170,38 @@ const screens = {
   },
 };
 
+// Directions come from the REFINED nodes, which is the payoff of refining at
+// all: its nodes are junctions and portals — the things worth mentioning —
+// rather than a few hundred grid cells nobody would name.
 function routeSteps(r) {
   const steps = [];
+  if (!r.nodes.length) return [{ text: "Head straight there", dist: r.lengthM }];
+
   let runDist = 0;
-  let cur = r.nodes[0].floorKey ?? String(r.nodes[0].floor);
+  let cur = r.nodes[0];
+  let curKey = cur.floorKey ?? String(cur.floor);
+
   for (let i = 1; i < r.nodes.length; i++) {
     const a = r.nodes[i - 1], b = r.nodes[i];
     runDist += Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
     const key = b.floorKey ?? String(b.floor);
-    if (key !== cur) {
+
+    if (key !== curKey) {
       const sameBuilding = a.buildingId && b.buildingId && a.buildingId === b.buildingId;
       steps.push({
         text: sameBuilding
-          ? `Follow the corridor, then go to floor ${b.floor}`
-          : `Follow the corridor into ${buildingName(b.buildingId)} (floor ${b.floor})`,
+          ? `Follow the corridor, then take the stairs to floor ${b.floor}`
+          : `Follow the corridor through into ${buildingName(b.buildingId)} (floor ${b.floor})`,
         dist: runDist,
       });
-      runDist = 0; cur = key;
+      runDist = 0; curKey = key;
+    } else if (b.kind === "junction" && runDist > 8) {
+      steps.push({ text: "Continue to the junction", dist: runDist });
+      runDist = 0;
     }
   }
-  if (runDist > 0) steps.push({ text: "Continue to your destination", dist: runDist });
-  return steps.length ? steps : [{ text: "You're basically there", dist: r.length }];
+  if (runDist > 0.5) steps.push({ text: "Continue to your destination", dist: runDist });
+  return steps.length ? steps : [{ text: "You're basically there", dist: r.lengthM }];
 }
 
 function go(stage) { S.stage = stage; render(); }
@@ -1153,8 +1215,16 @@ function railHtml() {
   return `
     <h3>DATA</h3>
     <div class="kv"><span>source</span><b>${S.source}</b></div>
-    <div class="kv"><span>graph nodes / edges</span><b>${S.graph ? S.graph.nodes.size : 0} / ${S.graph ? S.graph.edges.size : 0}</b></div>
-    <div class="kv"><span>longest edge</span><b>${maxEdge.toFixed(2)}m</b></div>
+    <div class="kv"><span>raw cells (evidence)</span><b>${S.graph ? S.graph.nodes.size : 0} / ${S.graph ? S.graph.edges.size : 0}</b></div>
+    <div class="kv"><span>refined map</span><b>${S.refined ? S.refined.nodes.size : 0} / ${S.refined ? S.refined.edges.size : 0}</b></div>
+    <div class="kv"><span>reduction</span><b>${
+      S.refined && S.graph && S.refined.nodes.size
+        ? (S.graph.nodes.size / S.refined.nodes.size).toFixed(1) + "×" : "—"}</b></div>
+    <div class="kv"><span>junctions / portals</span><b>${
+      S.refined ? [...S.refined.nodes.values()].filter((n) => n.kind === "junction").length : 0} / ${
+      S.refined ? [...S.refined.nodes.values()].filter((n) => n.kind === "portal").length : 0}</b></div>
+    <div class="kv"><span>longest raw edge</span><b>${maxEdge.toFixed(2)}m</b></div>
+    <button id="b-showraw" class="${S.showRaw ? "on" : ""}">${S.showRaw ? "◼ Hide raw trace cells" : "▢ Show raw trace cells"}</button>
     <div class="kv"><span>legacy north spread</span><b>${g.northSpreadDeg != null ? "±" + g.northSpreadDeg.toFixed(0) + "°" : "—"}</b></div>
     ${Object.keys(S.floorHeights).length ? `
       <div class="kv"><span>learned floor heights</span><b></b></div>
@@ -1205,7 +1275,7 @@ function railHtml() {
     <h3>SCENARIOS</h3>
     <button id="b-fullrun" class="${S.autoScript ? "on" : ""}">${S.autoScript ? "◼ Stop simulated run" : "▶ Simulate a full collection run"}</button>
     <button id="b-addpath">＋ Add random path to the graph</button>
-    <button id="b-glitch">⚡ Inject a tracking dropout</button>
+    <button id="b-glitch">Inject a tracking dropout</button>
     <button id="b-reset">↺ Reset session</button>
 
     <h3>SESSION</h3>
@@ -1231,6 +1301,7 @@ function wireRail() {
   on("b-back", "onclick", () => stepForward(-1));
   on("b-left", "onclick", () => { S.sim.heading = norm360(S.sim.heading - 15); });
   on("b-right", "onclick", () => { S.sim.heading = norm360(S.sim.heading + 15); });
+  on("b-showraw", "onclick", () => { S.showRaw = !S.showRaw; syncRail(); });
   on("b-addpath", "onclick", addRandomPath);
   on("b-glitch", "onclick", () => {
     S.sim.trackingGlitch = 0.6;

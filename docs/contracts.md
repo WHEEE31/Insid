@@ -190,6 +190,40 @@ Graph cells are scoped by `floorKey` (`"wean-hall:4"`) when present, falling bac
 to the bare floor index — so two buildings' "floor 2" never merge, and pre-v5
 data behaves exactly as before.
 
+## Refined graph — `web/pipeline/refine.js`  (owner: D)
+
+The wayfinder routes over the REFINED graph, never the raw trace cells.
+
+```js
+refineGraph(rawGraph, opts?): {nodes, edges, stats}
+snapToRefined(refined, pos, {scope}): {edge, point, distanceM, alongM} | null
+routeRefined(refined, fromPos, toPos): {polyline, nodes, lengthM, snapFrom, snapTo} | null
+```
+
+A raw node exists because somebody's foot landed in a 1.5m cell — it records
+how people happened to walk, not how the building is laid out. Worse, two trips
+down one corridor **braid**: they weave between adjacent cells and cross-link,
+so nearly every node ends up degree-3. That can't be fixed topologically
+(merging "nearby" nodes either does nothing or collapses the whole corridor,
+depending on the radius), so refinement is geometric, as in the map-inference
+literature: **paint** traversals into a per-level occupancy raster with a brush
+about half a corridor wide, **thin** the band to a single-pixel skeleton
+(Zhang-Suen) — that skeleton *is* the centreline — then **vectorise**, **prune**
+hairs and short spurs, and **smooth**.
+
+Nodes come out as `junction` / `endpoint` / `portal` / `corridor`, which is what
+directions and a destination registry can actually refer to. Edges carry
+`evidence` (raw traversals supporting them), so repeat walks read as stronger
+and the map gains confidence as more people walk.
+
+**Snapping is onto an EDGE, not a node.** Junctions are sparse by design, so
+nearest-node snapping would drag someone standing mid-corridor to a junction
+tens of metres away; `snapToRefined` projects onto the polyline instead, and
+`routeRefined` splices both snap points in as temporary nodes.
+
+Measured on the current Supabase walks: 165 raw cells → 26 refined nodes
+(6.3× reduction); a route that took 11 raw cells becomes a 2-node path.
+
 ## File ownership (NO cross-writes — prevents collisions)
 
 | Stream | Owns (create/edit) | May IMPORT/READ only |
@@ -197,7 +231,7 @@ data behaves exactly as before.
 | **A** node anchoring | `web/pipeline/node-anchor.js`, `web/data/nodes.json` | contracts, path-schema |
 | **B** database | `supabase/*`, `Insid/Insid/Uploader.swift`, `Insid/Insid/ContentView.swift`, `web/data-loader.js`, `web/config.example.js` | contracts, WalkModel.swift |
 | **C** map overlay | `web/map.html`, `web/map.js`, `web/pipeline/georef.js` | `data-loader.js` (loadWalks/loadNodes), `node-anchor.js`, nodes.json |
-| **D** routing graph | `web/pipeline/{graph,db-graph,world-align,buildings,building-floors}.js`, `web/data/buildings.json`, `tools/fetch-buildings.mjs`, `web/graph-view.*`, `web/prototype.*` | contracts, path-schema, `data-loader.js` (loadWalks/loadNodes), `floors.js` |
+| **D** routing graph | `web/pipeline/{graph,db-graph,world-align,buildings,building-floors,refine}.js`, `web/data/buildings.json`, `tools/fetch-buildings.mjs`, `web/graph-view.*`, `web/prototype.*` | contracts, path-schema, `data-loader.js` (loadWalks/loadNodes), `floors.js` |
 
 Shared, read-only for all: `docs/contracts.md`, `docs/path-schema.md`.
 
