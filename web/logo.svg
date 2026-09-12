@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+     color="#2fe2cc"
+     fill="none" stroke="currentColor" stroke-width="2"
+     stroke-linecap="round" stroke-linejoin="round">
+  <!-- Insid mark — placeholder. Replace this whole file with your logo.
+
+       Two things to keep so it drops straight in:
+         · a viewBox (any box; the page scales to it)
+         · currentColor for the ink, so the floating marks can still be
+           cyan in some places and amber in others
+
+       The color="#2fe2cc" on the root is only what currentColor falls back
+       to when this file is rendered on its own — the favicon, or opened
+       directly. The page ignores it and supplies its own colour. -->
+  <circle cx="12" cy="12" r="10" stroke-width="1" stroke-dasharray="2 3" opacity=".5"/>
+  <path d="M6 12H17M17 12L12 7M17 12L12 17"/>
+</svg>

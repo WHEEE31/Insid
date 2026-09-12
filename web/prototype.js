@@ -36,7 +36,7 @@ const SAMPLE_HZ = 10;
 
 const S = {
   mode: "collector",
-  stage: "start",
+  stage: "home",
   source: "…",
   walks: [], nodes: [], nodesGeo: [], nodesById: {}, buildings: [],
   graph: null, refined: null, labels: null, customNames: {}, showRaw: true, campus: null, frameGeoref: null, floorLinks: [], floorHeights: {},
@@ -51,7 +51,7 @@ const S = {
   rec: null,
   recordings: [],
   form: { query: "", selectedId: null, floor: 1 },  // building/floor declaration
-  user: { startId: null, destId: null, result: null },
+  user: { startId: null, destId: null, result: null, query: "" },
   autoScript: null,
   log: [],
 };
@@ -724,6 +724,9 @@ function wireCompassDrag(canvas) {
 //     Back and escape hatches are quiet text, not slabs.
 //   - display font for headings and numerals, sans for sentences, mono for
 //     machine facts (units, refs, state). Never mix the jobs.
+const logo = (cls = "") =>
+  `<svg class="${cls}" viewBox="0 0 24 24" role="img" aria-label="Insid"><use href="#logo-mark"/></svg>`;
+
 const nav = (label, back) => `
   <div class="nav">
     ${back ? `<button class="nav-back" data-back="${back}" aria-label="Back">&#8592;</button>` : ""}
@@ -790,30 +793,99 @@ function wireBuildingForm(onPick) {
 // screens
 // ---------------------------------------------------------------------------
 const screens = {
-  start: () => ({
-    label: "Collector · Start",
+  // The one screen both sides of the app open on. It is the collector start
+  // screen's layout — mark, line, stats, two actions — with the wordmark
+  // swapped for the mark itself, and the mode chosen here instead of in
+  // desktop chrome the phone doesn't have.
+  home: () => ({
+    label: "Insid · Home",
     html: `
-      ${nav("Collector")}
       <div class="body">
         <div class="spacer"></div>
         <div class="hero">
-          <div class="hero-mark">INSID</div>
+          ${logo("hero-mark")}
           <p class="hero-line">Walk a building once. Everyone who follows gets the route.</p>
         </div>
         <div class="spacer"></div>
         <div class="stats">
           <div class="stat"><b>${S.walks.length}</b><span>Walks</span></div>
-          <div class="stat"><b>${S.recordings.length}</b><span>Yours</span></div>
           <div class="stat"><b>${S.buildings.length}</b><span>Buildings</span></div>
+          <div class="stat"><b>${S.refined ? S.refined.nodes.size : 0}</b><span>Places</span></div>
         </div>
-        <p class="note">
-          Every path is anchored by GPS at both ends and by facing north at the
-          start — that's what lets separate walks line up on one campus map.
-        </p>
+        <div class="spacer"></div>
       </div>
       <div class="actions">
-        <button class="btn btn--primary" id="go">Start mapping</button>
-        <button class="btn btn--quiet" id="recs">Recordings · ${S.recordings.length}</button>
+        <button class="choice" id="to-nav">
+          <span>
+            <span class="big">I need to go to&hellip;</span>
+            <span class="sub">Search a room, get the indoor route</span>
+          </span>
+          <span class="arrow">&#8594;</span>
+        </button>
+        <button class="choice choice--quiet" id="to-collect">
+          <span>
+            <span class="big">I want to contribute</span>
+            <span class="sub">Map a building by walking it</span>
+          </span>
+          <span class="arrow">&#8594;</span>
+        </button>
+      </div>`,
+    wire: () => {
+      $("#to-nav").onclick = () => {
+        S.mode = "user";
+        S.user = { startId: null, destId: null, result: null, query: "" };
+        syncModeButtons();
+        go("dest");
+      };
+      $("#to-collect").onclick = () => {
+        S.mode = "collector";
+        syncModeButtons();
+        go("start");
+      };
+    },
+  }),
+
+  // The collector brief: what the job actually is, then one switch to begin.
+  // Everything a collector has to understand lives here, so the four steps
+  // that follow can each ask for exactly one thing.
+  start: () => ({
+    label: "Collector · Brief",
+    html: `
+      ${nav("Contribute", "home")}
+      <div class="body">
+        <h2 class="t-display">What you'll be doing</h2>
+        <div class="brief">
+          <p>
+            Step outside the door you're about to use and wait for a <b>clean GPS
+            fix</b> — that's what pins your walk to the campus map. Name the
+            <b>building and floor</b>, then <b>face north</b>, so the app knows
+            which way your path points.
+          </p>
+          <p>
+            Then just <b>walk it</b>, normally, the way you would anyway. Tap a
+            marker as you pass a <b>door, staircase, elevator or room</b>, and tell
+            the app when you cross into another building. Finish at an
+            <b>outside door</b> so both ends are anchored.
+          </p>
+          <p>
+            One walk, about five minutes. Everyone who needs that route
+            afterwards gets it from you.
+          </p>
+        </div>
+        <div class="stats">
+          <div class="stat"><b>${S.recordings.length}</b><span>Yours</span></div>
+          <div class="stat"><b>${S.walks.length}</b><span>Walks</span></div>
+          <div class="stat"><b>~5 min</b><span>Per walk</span></div>
+        </div>
+        <div class="spacer"></div>
+        <div class="go-center">
+          <button class="go go--lg" id="go" aria-label="Start collection">START</button>
+          <span class="cap">Start collection</span>
+        </div>
+        <div class="spacer"></div>
+      </div>
+      <div class="actions">
+        <button class="btn btn--quiet" id="recs">Recordings &middot; ${S.recordings.length}</button>
       </div>`,
     wire: () => {
       $("#go").onclick = () => {
@@ -1175,11 +1247,15 @@ const screens = {
     // those are the places with names a person can read ("WEH 4 · Junction 2")
     // rather than grid cells named after their own coordinates.
     const here = { x: S.sim.x, y: S.sim.altitude, z: S.sim.z };
-    const places = [...(S.refined?.nodes.values() || [])]
+    const all = [...(S.refined?.nodes.values() || [])]
       .filter((n) => n.kind !== "corridor")
       .map((n) => ({ ...n, distanceM: Math.hypot(n.x - here.x, n.z - here.z) }))
-      .sort((a, b) => a.distanceM - b.distanceM)
-      .slice(0, 60);
+      .sort((a, b) => a.distanceM - b.distanceM);
+
+    // Search beats scrolling: with a query the nearest-60 window is dropped,
+    // because the room someone typed may well be the furthest one on campus.
+    const q = S.user.query.trim();
+    const places = q ? all.filter((n) => matchesPlace(n, q)) : all.slice(0, 60);
     const snap = S.refined ? snapToRefined(S.refined, here) : null;
 
     // group by level so a long list stays readable
@@ -1190,19 +1266,23 @@ const screens = {
       groups.get(key).push(p);
     }
 
+    const picked = places.find((n) => n.id === S.user.destId);
+
     return {
       label: "Wayfinder · Destination",
       html: `
-        ${nav("Insid · Wayfinder")}
+        ${nav("Insid · Wayfinder", "home")}
         <div class="body">
           <h2 class="t-display">Where to?</h2>
           <p class="t-body" style="margin-top:4px">${snap
             ? `On ${snap.edge.name || "the map"}, ${snap.distanceM.toFixed(1)} m from the line`
             : "Not on the map yet"}</p>
-          <canvas id="map" class="map" data-h="140" data-scale="3" style="margin-top:12px"></canvas>
-          <div class="label">Destination</div>
+          <canvas id="map" class="map" data-h="118" data-scale="3" style="margin-top:12px"></canvas>
+          <div class="label">${q ? `Matches &middot; ${places.length}` : "Nearest places"}</div>
           <div class="scroll">
-            ${places.length ? [...groups].map(([level, list]) => `
+            ${!all.length
+              ? `<p class="t-body">No map yet — record a path in Collector mode first.</p>`
+              : places.length ? [...groups].map(([level, list]) => `
               <div class="levelhead">${level}</div>
               ${list.map((n) => `
                 <button class="card ${S.user.destId === n.id ? "sel" : ""}" data-id="${n.id}">
@@ -1210,18 +1290,23 @@ const screens = {
                   <div class="nm">${n.name}</div>
                   <div class="meta">${n.ref}${n.customName ? " · named" : ""} · ${n.kind}</div>
                 </button>`).join("")}`).join("")
-              : `<p class="t-body">No map yet — record a path in Collector mode first.</p>`}
+              : `<p class="t-body">Nothing matches &ldquo;${escapeHtml(q)}&rdquo;. Try fewer letters, or a room number.</p>`}
           </div>
         </div>
         <div class="actions">
-          <button class="btn btn--primary" id="go" ${S.user.destId ? "" : "disabled"}>Find route</button>
+          <div class="prompt-hint">${picked
+            ? `Going to <b>${picked.name}</b>`
+            : q ? "Pick a match, or press enter for the first" : "Type a room, floor or building"}</div>
+          <div class="prompt">
+            <input id="dq" class="input" type="text" autocomplete="off"
+              placeholder="Search destinations…"
+              value="${S.user.query.replace(/"/g, "&quot;")}"/>
+            <button class="go" id="go" ${S.user.destId ? "" : "disabled"} aria-label="Navigate">GO</button>
+          </div>
         </div>`,
       wire: () => {
-        document.querySelectorAll(".card[data-id]").forEach((b) => {
-          b.onclick = () => { S.user.destId = b.dataset.id; render(); };
-        });
-        $("#go").onclick = () => {
-          const to = S.refined?.nodes.get(S.user.destId);
+        const start = (id) => {
+          const to = S.refined?.nodes.get(id);
           S.user.startId = null;
           // Route over the refined graph, snapping onto an EDGE rather than the
           // nearest raw cell — junctions are sparse by design.
@@ -1232,6 +1317,33 @@ const screens = {
             : "no route found");
           go("route");
         };
+
+        document.querySelectorAll(".card[data-id]").forEach((b) => {
+          b.onclick = () => { S.user.destId = b.dataset.id; render(); };
+        });
+
+        const input = $("#dq");
+        input.oninput = (e) => {
+          S.user.query = e.target.value;
+          // A narrowed query that no longer matches the pick shouldn't leave GO
+          // armed for it. Checked against the new query, not the list that was
+          // on screen a keystroke ago.
+          const q2 = S.user.query.trim();
+          const kept = S.refined?.nodes.get(S.user.destId);
+          if (q2 && kept && !matchesPlace(kept, q2)) S.user.destId = null;
+          render();
+          const f = $("#dq");
+          if (f) { f.focus(); f.setSelectionRange(f.value.length, f.value.length); }
+        };
+        // Enter behaves like the circle: commit the pick, or the top match.
+        input.onkeydown = (e) => {
+          if (e.key !== "Enter") return;
+          e.preventDefault();
+          const id = S.user.destId || places[0]?.id;
+          if (id) { S.user.destId = id; start(id); }
+        };
+
+        $("#go").onclick = () => start(S.user.destId);
       },
     };
   },
@@ -1278,6 +1390,18 @@ const screens = {
     };
   },
 };
+
+const escapeHtml = (t) => String(t).replace(/[&<>"]/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// Destination search. Every word typed has to appear somewhere in the place —
+// its name, its ref, its building code, its kind — so "weh 4 stair" narrows
+// across all four at once and word order doesn't matter.
+function matchesPlace(n, query) {
+  const hay = [n.name, n.ref, n.code, n.kind, n.customName, n.floor != null ? `floor ${n.floor}` : ""]
+    .filter(Boolean).join(" ").toLowerCase();
+  return query.toLowerCase().split(/\s+/).filter(Boolean).every((w) => hay.includes(w));
+}
 
 // Directions come from the REFINED nodes, which is the payoff of refining at
 // all: its nodes are junctions and portals — the things worth mentioning —
@@ -1429,8 +1553,8 @@ function wireRail() {
   on("b-fullrun", "onclick", () => (S.autoScript ? stopFullRun() : startFullRun()));
   on("b-reset", "onclick", () => {
     S.recordings = []; S.rec = null; S.autoScript = null; S.sim.autoWalk = false;
-    S.user = { startId: null, destId: null, result: null };
-    log("session reset"); go("start");
+    S.user = { startId: null, destId: null, result: null, query: "" };
+    log("session reset"); go("home");
   });
 }
 
@@ -1477,6 +1601,10 @@ function addRandomPath() {
 // Drive the whole collector flow hands-free, including a mid-walk building
 // crossing — the fastest way to see the flow end to end after a UI change.
 function startFullRun() {
+  // The run drives collector stages directly, so the mode has to follow or
+  // render() bounces every one of them back to the wayfinder.
+  S.mode = "collector";
+  syncModeButtons();
   let phase = "gps", elapsed = 0;
   S.sim.gpsAccuracy = 26;
   S.sim.seekingSignal = true;
@@ -1565,8 +1693,12 @@ function stopFullRun() {
 // render
 // ---------------------------------------------------------------------------
 function render() {
-  if (S.mode === "user" && !["dest", "route"].includes(S.stage)) S.stage = "dest";
-  if (S.mode === "collector" && ["dest", "route"].includes(S.stage)) S.stage = "start";
+  // home belongs to neither mode — it is where the mode gets chosen — so it
+  // is the one stage neither bounce may touch.
+  if (S.stage !== "home") {
+    if (S.mode === "user" && !["dest", "route"].includes(S.stage)) S.stage = "dest";
+    if (S.mode === "collector" && ["dest", "route"].includes(S.stage)) S.stage = "start";
+  }
   const scr = (screens[S.stage] || screens.start)();
   $("#stage-label").textContent = scr.label;
   screenEl.innerHTML = scr.html;
@@ -1582,11 +1714,18 @@ function render() {
   syncRail();
 }
 
+// The desktop segmented control is a shortcut past the landing screen, for
+// iterating on one side without clicking through it. The phone picks its mode
+// on home instead, which is why both go through syncModeButtons().
+function syncModeButtons() {
+  document.querySelectorAll(".seg button").forEach((b) =>
+    b.classList.toggle("on", b.dataset.mode === S.mode));
+}
+
 document.querySelectorAll(".seg button").forEach((b) => {
   b.onclick = () => {
-    document.querySelectorAll(".seg button").forEach((x) => x.classList.remove("on"));
-    b.classList.add("on");
     S.mode = b.dataset.mode;
+    syncModeButtons();
     S.stage = S.mode === "user" ? "dest" : "start";
     render();
   };
@@ -1609,8 +1748,7 @@ const deepLink = location.hash.slice(1);
 if (screens[deepLink]) {
   S.stage = deepLink;
   S.mode = ["dest", "route"].includes(deepLink) ? "user" : "collector";
-  document.querySelectorAll(".seg button").forEach((b) =>
-    b.classList.toggle("on", b.dataset.mode === S.mode));
+  syncModeButtons();
 }
 
 render();
