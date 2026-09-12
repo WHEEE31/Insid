@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Indoor Vis — Design Options</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #101216; }
+      canvas { display: block; }
+
+      /* top-center tab bar */
+      #tabs {
+        position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+        z-index: 10; display: flex; gap: 6px; flex-wrap: wrap; justify-content: center;
+        max-width: calc(100vw - 32px);
+        padding: 5px; border-radius: 10px;
+        background: rgba(20, 22, 28, 0.7);
+        backdrop-filter: blur(6px);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        font: 12px/1.2 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      }
+      #tabs button {
+        appearance: none; cursor: pointer;
+        padding: 8px 13px; border-radius: 7px;
+        border: 1px solid transparent; background: transparent;
+        color: #c7ccd4; letter-spacing: 0.01em; white-space: nowrap;
+        transition: background 0.15s, color 0.15s;
+      }
+      #tabs button:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+      #tabs button.active {
+        background: #fff; color: #14161c; font-weight: 600;
+        border-color: #fff;
+      }
+
+      /* bottom-left caption */
+      #caption {
+        position: fixed; left: 18px; bottom: 18px; z-index: 10;
+        max-width: 380px; pointer-events: none;
+        padding: 14px 16px; border-radius: 10px;
+        background: rgba(20, 22, 28, 0.72);
+        backdrop-filter: blur(6px);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: #d7dbe2;
+        font: 13px/1.5 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      }
+      #caption .cap-head {
+        display: flex; align-items: baseline; gap: 10px; margin-bottom: 5px;
+      }
+      #caption .cap-name { font-size: 15px; font-weight: 700; color: #fff; }
+      #caption .cap-num {
+        margin-left: auto; font: 11px ui-monospace, Menlo, monospace; color: #8b93a0;
+      }
+      #caption .cap-desc { color: #aab1bd; }
+      #caption #stats {
+        margin-top: 9px; padding-top: 9px;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        font: 11px/1.4 ui-monospace, Menlo, monospace; color: #7f8794;
+      }
+      #caption .note {
+        margin-top: 8px; font-size: 11px; color: #e4b563;
+        letter-spacing: 0.01em;
+      }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="tabs"></div>
+    <div id="caption">
+      <div class="cap-head">
+        <span class="cap-name">Loading…</span>
+        <span class="cap-num"></span>
+      </div>
+      <div class="cap-desc"></div>
+      <div id="stats"></div>
+      <div class="note">Previews only — tell Claude which style to apply to the live vis.</div>
+    </div>
+    <script type="module" src="./design-options.js"></script>
+  </body>
+</html>

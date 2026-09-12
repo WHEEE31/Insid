@@ -22,3 +22,10 @@ build/
 # Editor
 .vscode/
 .idea/
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+*.xcscmblueprint
+*.xccheckout

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Anchor test — GPS+compass vs raw</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1117; }
+      #c { display: block; }
+      #bar {
+        position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 10;
+        display: flex; gap: 8px;
+      }
+      #bar button {
+        font: 12px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .06em;
+        color: #aebfd4; background: rgba(20,28,44,.8); border: 1px solid rgba(140,170,220,.25);
+        padding: 8px 14px; border-radius: 3px; cursor: pointer;
+      }
+      #bar button:hover { color: #eaf2ff; border-color: rgba(140,170,220,.5); }
+      #hud {
+        position: fixed; top: 14px; left: 14px; z-index: 10; min-width: 220px;
+        font: 12px/1.6 ui-monospace, monospace; color: #aebfd4;
+        background: rgba(13,17,23,.85); border: 1px solid rgba(140,170,220,.2);
+        border-radius: 3px; padding: 12px 14px;
+      }
+      #hud .title { color: #eaf2ff; font-weight: 700; margin-bottom: 8px; letter-spacing: .04em; }
+      #hud .sep { color: #ffd27f; margin-bottom: 8px; }
+      #hud .sep b { color: #fff; }
+      #hud .row { display: flex; align-items: center; gap: 7px; cursor: pointer; padding: 1px 0; }
+      #hud .row.off { opacity: .4; }
+      #hud .row input { margin: 0 2px 0 0; cursor: pointer; accent-color: #1d9bf0; }
+      #hud .row i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+      #hud .warn { color: #ff6b6b; }
+      #hud .hint { margin-top: 8px; color: #5f7291; }
+    </style>
+  </head>
+  <body>
+    <div id="bar">
+      <button id="anchored">GPS + Compass</button>
+      <button id="raw">Raw (shared origin)</button>
+    </div>
+    <div id="hud">loading…</div>
+    <canvas id="c"></canvas>
+    <script type="module" src="./anchor-test.js"></script>
+  </body>
+</html>
