@@ -73,6 +73,46 @@ localToLatLon(x: number, z: number, g: Georef): { lat, lon }
    points jsonb, created_at timestamptz default now())`
 - Hackathon RLS: anon insert on `walks`, anon select on both. Document in supabase/README.md.
 - Web reads via anon key in `web/config.js` (gitignored); provide `web/config.example.js`.
+- **TODO(schema, owner B):** neither table has a `building` column yet. Once one
+  exists (e.g. `walks.building text`, `nodes.building text`), plumb it through
+  `rowToWalk`/`loadNodes` in `data-loader.js` so `graph.js`/`db-graph.js` (owner
+  D, below) pick it up automatically — they already carry a `.building` field
+  through if present and need no other change.
+
+## Routing graph — `web/pipeline/graph.js`, `web/pipeline/db-graph.js`  (owner: D)
+
+Builds the graph a shortest-path query runs over, straight from whatever
+`data-loader.js` returns (Supabase or its fallback) — no separate "database
+schema" beyond `nodes`/`walks` above.
+
+```js
+// graph.js — pure, walks-in graph-out. cellSize = grid-cell size (m) for
+// merging nearby points into one node. maxEdgeMeters = hard cap on any single
+// edge's length (m); default DEFAULT_MAX_EDGE_METERS = 8ft. Longer spans (e.g.
+// a stairwell run) are subdivided with synthetic in-between nodes rather than
+// left as one long edge, so the 8ft constraint always holds on the output.
+buildGraph(walks: Walk[], opts?: {cellSize?, maxEdgeMeters?}): Graph
+nearestNode(graph: Graph, pos: {x,y,z}): Node
+route(graph: Graph, startPos: {x,y,z}, endPos: {x,y,z}): {nodes, edges, length} | null
+
+// db-graph.js — composes loadWalks/loadNodes + floors + graph, and adds
+// registry-node-id routing (vs. raw positions) for cross-building queries.
+loadGraphFromDatabase(opts?: {cellSize?, maxEdgeMeters?}): Promise<{graph, nodes, nodesById}>
+routeBetweenNodeIds(graph, nodesById, startNodeId, endNodeId): RouteResult | null
+summarizeRouteBuildings(routeResult): {building, count}[]
+```
+
+**Multi-building routing has no special case.** A `Graph` node/edge doesn't
+know or care which building it's in — `building` is majority-vote display
+metadata carried from whichever walks touched that grid cell (null until the
+DB has a `building` column; see TODO above). Building A connects to building B
+in the graph *only if* some recorded walk's points physically span both (e.g.
+a tunnel/skyway) — same Dijkstra as any other route, not a separate algorithm.
+This mirrors the "record raw, align later" principle in `docs/path-schema.md`:
+if two buildings' walks were recorded as separate ARKit sessions with no
+shared frame, they won't connect here until something (future anchoring/
+georeferencing work) puts their points in one frame — that's out of scope for
+this module, which only clusters whatever frame the input walks are already in.
 
 ## File ownership (NO cross-writes — prevents collisions)
 
@@ -81,8 +121,14 @@ localToLatLon(x: number, z: number, g: Georef): { lat, lon }
 | **A** node anchoring | `web/pipeline/node-anchor.js`, `web/data/nodes.json` | contracts, path-schema |
 | **B** database | `supabase/*`, `Insid/Insid/Uploader.swift`, `Insid/Insid/ContentView.swift`, `web/data-loader.js`, `web/config.example.js` | contracts, WalkModel.swift |
 | **C** map overlay | `web/map.html`, `web/map.js`, `web/pipeline/georef.js` | `data-loader.js` (loadWalks/loadNodes), `node-anchor.js`, nodes.json |
+| **D** routing graph | `web/pipeline/graph.js`, `web/pipeline/db-graph.js` | contracts, path-schema, `data-loader.js` (loadWalks/loadNodes), `floors.js` |
 
 Shared, read-only for all: `docs/contracts.md`, `docs/path-schema.md`.
+
+Note: `web/main.js` imports `buildGraph`/`route` from `graph.js` (unchanged
+call signatures — `maxEdgeMeters` defaults to 8ft rather than unlimited, which
+only changes behavior when an edge was already longer than that, e.g. a
+stairwell run gets subdivided into multiple connector segments instead of one).
 
 ## Current-data note
 
