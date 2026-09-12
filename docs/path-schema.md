@@ -124,6 +124,62 @@ Store `northOffsetDeg` and leave `points` raw (`northAligned` absent/false).
 over any magnetometer-based estimate. Setting `northAligned: true` is only
 correct if the recorder rotated the points itself before saving.
 
+## Entrances and building crossings (v5)
+
+A path must **start and end at a building entrance**, standing outside where GPS
+actually works, and must declare **every building it crosses into** along the way.
+
+```json
+{
+  "schemaVersion": 5,
+  "startEntrance": { "buildingId": "wean-hall", "buildingName": "Wean Hall",
+                     "floor": 4, "lat": 40.44267, "lon": -79.94581,
+                     "gpsAccuracy": 4.2, "t": 0 },
+  "buildingTransitions": [
+    { "buildingId": "doherty-hall", "buildingName": "Doherty Hall",
+      "floor": 2, "t": 210.5 }
+  ],
+  "endEntrance": { "buildingId": "doherty-hall", "floor": 1,
+                   "lat": 40.44252, "lon": -79.94450, "gpsAccuracy": 5.1, "t": 412.3 }
+}
+```
+
+**Why each piece is required:**
+
+| field | what it pins down |
+|---|---|
+| `startEntrance.lat/lon` | the walk's **translation** — where its frame sits on Earth. With `northOffsetDeg` supplying rotation, a session is fully placed without sharing an ARKit session with any other walk. |
+| `endEntrance.lat/lon` | a **closure constraint**. After placement the last point should land on this fix; the miss is accumulated drift, rubber-sheeted away by `placeWalkByEntrances`. Over a long baseline it also cross-checks the north gesture (`northCheckDeg`). |
+| `*.buildingId` | which building's floor ladder applies. Resolved from what the collector types via `web/pipeline/buildings.js` against an OSM gazetteer scoped to this campus, so "Roberts" can only mean Roberts Engineering Hall. |
+| `*.floor` | re-bases the barometer (below). Asked at **every** threshold, including the start. |
+
+Outside is the one place GPS is trustworthy — roughly ±5m with open sky versus
+±15–25m indoors, which is what the pre-v5 recordings actually show. The recorder
+gates on signal quality before it will start or finish a path.
+
+### Floors are per building, and crossings don't preserve them
+
+Buildings sit at different grades and have different floor heights, so one
+global altitude ladder cannot fit them all. Each declaration re-bases it:
+
+```
+floor(p) = declaredFloor + round( (altitude(p) − altitudeAtDeclaration)
+                                  / floorHeight(building) )
+```
+
+Altitude is therefore only ever read *relative* to the most recent declaration,
+*within* one building — never compared across buildings or across walks, which
+is what makes weather drift and campus grade irrelevant.
+
+Floor numbers do **not** line up across a connector: you can walk from Wean 4
+straight into Doherty 2. So a transition carries the floor of the building being
+*entered*, and the floor of the one being *left* is inferred from the ladder in
+force — the two together give a correspondence ("Wean 4 ↔ Doherty 2"), returned
+as `floorLinks` by `web/pipeline/building-floors.js`.
+
+Downstream, points are tagged `floorKey` (`"wean-hall:4"`), and the routing graph
+scopes its grid cells by that — otherwise two buildings' "floor 2" would merge.
+
 ## Floors — why `relAltitude`, not GPS or ARKit `y`
 
 `relAltitude` comes from the barometer and is accurate to ~0.3–1 m — well under a

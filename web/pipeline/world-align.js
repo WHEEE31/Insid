@@ -180,6 +180,106 @@ export function latLonToLocal(lat, lon, g) {
   return { x: u, z: -v };
 }
 
+// --- entrance anchoring -----------------------------------------------------
+
+// ONE shared frame for the whole campus: meters relative to a fixed origin,
+// with +x = east and -z = north (the same convention as everywhere else).
+// Every walk gets placed into this, which is what lets recordings made in
+// separate sessions coexist without overlapping each other.
+export function makeCampusFrame(lat0, lon0) {
+  return { lat0, lon0, northOffsetDeg: 0, ...metersPerDeg(lat0) };
+}
+
+/**
+ * Place a walk into the campus frame using the GPS fixes taken at the
+ * entrances it started and finished at.
+ *
+ * North calibration fixes the walk's ROTATION; the start-entrance fix fixes its
+ * TRANSLATION. Together they pin a session absolutely — no shared ARKit session
+ * required, which is what stops two separately-recorded buildings from being
+ * silently overlaid on top of each other.
+ *
+ * The end-entrance fix is a closure constraint: after placement the last point
+ * should land on it, and whatever it misses by is accumulated tracking drift.
+ * That residual is rubber-sheeted linearly over the walk (start stays pinned,
+ * end lands on the fix) — the same trick node-anchor.js uses for node refs.
+ *
+ * It also gives a free check on the north gesture: over a long enough baseline
+ * the bearing between two GPS fixes is far more trustworthy than a compass, so
+ * `northCheckDeg` reports how far off the collector's calibration looks.
+ *
+ * @returns a NEW walk with campus-frame points, `.placed`, and `.placement`
+ */
+export function placeWalkByEntrances(walk, campus, {
+  driftCorrect = true,
+  maxDriftM = 60,
+} = {}) {
+  const start = walk?.startEntrance;
+  if (!start || !Number.isFinite(start.lat) || !Number.isFinite(start.lon)) {
+    return { ...walk, placed: false, placement: { reason: "no start-entrance GPS fix" } };
+  }
+  const aligned = alignWalkToNorth(walk);
+  if (!aligned.northAligned) {
+    return { ...walk, placed: false, placement: { reason: "no north reference" } };
+  }
+
+  const pts = aligned.points;
+  if (!pts?.length) return { ...walk, placed: false, placement: { reason: "no points" } };
+
+  const origin = latLonToLocal(start.lat, start.lon, campus);
+  const dx = origin.x - pts[0].x, dz = origin.z - pts[0].z;
+  let points = pts.map((p) => ({ ...p, x: p.x + dx, z: p.z + dz }));
+
+  const info = {
+    anchor: "startEntrance",
+    startBuildingId: start.buildingId ?? null,
+    startAccuracyM: start.gpsAccuracy ?? null,
+  };
+
+  const end = walk.endEntrance;
+  if (end && Number.isFinite(end.lat) && Number.isFinite(end.lon)) {
+    const last = points[points.length - 1];
+    const target = latLonToLocal(end.lat, end.lon, campus);
+    const rx = target.x - last.x, rz = target.z - last.z;
+    const residualM = Math.hypot(rx, rz);
+    info.residualM = residualM;
+    info.endBuildingId = end.buildingId ?? null;
+
+    // Cross-check north, but only when the GPS baseline is long enough to beat
+    // its own error — otherwise the "check" is just noise.
+    const baselineM = Math.hypot(target.x - origin.x, target.z - origin.z);
+    const fixError = (start.gpsAccuracy ?? 10) + (end.gpsAccuracy ?? 10);
+    if (baselineM > fixError * 1.5) {
+      const bearingOf = (ax, az, bx, bz) => norm360(Math.atan2(bx - ax, -(bz - az)) / DEG);
+      const gps = bearingOf(origin.x, origin.z, target.x, target.z);
+      const walked = bearingOf(points[0].x, points[0].z, last.x, last.z);
+      let diff = norm360(gps - walked);
+      if (diff > 180) diff -= 360;
+      info.northCheckDeg = diff;
+      info.baselineM = baselineM;
+    }
+
+    if (residualM > maxDriftM) {
+      // Too far off to be ordinary drift — more likely a bad fix or a tracking
+      // jump. Correcting it would smear that error across every point.
+      info.driftCorrected = false;
+      info.warning = `end residual ${residualM.toFixed(0)}m exceeds maxDriftM ${maxDriftM}m`;
+    } else if (driftCorrect) {
+      const t0 = points[0].t ?? 0;
+      const span = ((last.t ?? 1) - t0) || 1;
+      points = points.map((p) => {
+        const f = (((p.t ?? t0) - t0) / span);
+        return { ...p, x: p.x + rx * f, z: p.z + rz * f };
+      });
+      info.driftCorrected = true;
+    }
+  } else {
+    info.warning = "no end-entrance fix — drift is unbounded";
+  }
+
+  return { ...aligned, points, placed: true, placement: info };
+}
+
 // Ground distance in meters between two lat/lons (equirectangular — fine at
 // campus scale, and far cheaper than haversine).
 export function distanceMeters(lat1, lon1, lat2, lon2) {
@@ -304,6 +404,44 @@ export function runSelfTest() {
     northOffsetDeg: gg && +gg.northOffsetDeg.toFixed(2),
     pass: !!gg && approx(gg.lat0, fixLat, 1e-6) && approx(gg.lon0, fixLon, 1e-6)
       && approx(gg.northOffsetDeg, 0, 1e-6),
+  });
+
+  // 4b. Entrance anchoring: a walk that starts and ends at known entrances gets
+  //     pinned at both ends, with the closure residual rubber-sheeted away.
+  const campus = makeCampusFrame(40.4433, -79.9436);
+  const startFix = localToLatLon(0, 0, campus);
+  const endFix = localToLatLon(30, -40, campus); // 30m east, 40m north of origin
+  // The walk "thinks" it went 30E/40N but drifted 5m by the end.
+  const drifted = {
+    id: "w-entrances",
+    northAligned: true,
+    startEntrance: { buildingId: "wean-hall", floor: 2, t: 0, gpsAccuracy: 4, ...startFix },
+    endEntrance: { buildingId: "doherty-hall", floor: 1, t: 10, gpsAccuracy: 4, ...endFix },
+    points: [
+      { t: 0, x: 100, y: 0, z: 100 },            // arbitrary ARKit origin offset
+      { t: 5, x: 115, y: 0, z: 80 },
+      { t: 10, x: 133, y: 0, z: 57 },            // 33E/43N travelled: ~5m of drift
+    ],
+  };
+  const placed = placeWalkByEntrances(drifted, campus);
+  const pEnd = placed.points[2];
+  const endLocal = latLonToLocal(endFix.lat, endFix.lon, campus);
+  results.push({
+    name: "entrance anchoring pins both ends and absorbs the drift",
+    start: { x: +placed.points[0].x.toFixed(2), z: +placed.points[0].z.toFixed(2) },
+    end: { x: +pEnd.x.toFixed(2), z: +pEnd.z.toFixed(2) },
+    residualM: +placed.placement.residualM.toFixed(2),
+    northCheckDeg: placed.placement.northCheckDeg != null
+      ? +placed.placement.northCheckDeg.toFixed(1) : null,
+    pass: placed.placed
+      && approx(placed.points[0].x, 0, 1e-6) && approx(placed.points[0].z, 0, 1e-6)
+      && approx(pEnd.x, endLocal.x, 1e-6) && approx(pEnd.z, endLocal.z, 1e-6)
+      && placed.placement.driftCorrected === true,
+  });
+
+  results.push({
+    name: "a walk with no start fix refuses to be placed",
+    pass: placeWalkByEntrances({ id: "x", northAligned: true, points: [{ t: 0, x: 0, y: 0, z: 0 }] }, campus).placed === false,
   });
 
   // 5. nearestNodesToLatLon returns the closest k, nearest first.

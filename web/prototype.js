@@ -2,47 +2,63 @@
 // Owner: D. Purpose: iterate on the app's UX without an Xcode round-trip --
 // everything here is meant to be ported to SwiftUI once the flow settles.
 //
-// It runs the REAL pipeline (data-loader -> floors -> graph -> routing) against
-// real data, and fakes only the phone's sensors (compass, GPS, ARKit position),
-// which the debug rail lets you drive by hand or simulate.
+// It runs the REAL pipeline (buildings -> building-floors -> world-align ->
+// graph -> routing) and fakes only the phone's sensors (compass, GPS, barometer,
+// ARKit position), which the debug rail lets you drive by hand or simulate.
 //
-// Two flows it prototypes that the iOS app does NOT do yet:
-//   1. North calibration -- the collector faces north before walking, so every
-//      path starts at a known heading instead of an arbitrary one.
-//   2. Location-scoped start-node picking -- rough GPS narrows 60+ registry
-//      nodes down to the ~5 you could plausibly be standing on.
+// The collector flow it prototypes:
+//   start -> acquire GPS outside an entrance -> declare building + floor ->
+//   face north -> record (declaring each building crossed) -> walk back out to
+//   an entrance -> declare building + floor -> save
+//
+// Every one of those steps exists for a reason the pipeline depends on:
+//   - the GPS gate gives each walk an absolute position (translation anchor)
+//   - facing north gives it an absolute rotation
+//   - building + floor declarations re-base the barometric floor ladder, which
+//     can't be global because buildings differ in floor height and sit at
+//     different grades
+//   - the end fix bounds accumulated drift, and cross-checks the north gesture
 
 import { loadWalks, loadNodes } from "./data-loader.js";
 import { annotateFloors } from "./pipeline/floors.js";
-import { buildGraph, route as routeGraph } from "./pipeline/graph.js";
+import { buildGraph, route as routeGraph, splitOnTrackingLoss } from "./pipeline/graph.js";
+import { loadBuildings, resolveBuilding, buildingsNear } from "./pipeline/buildings.js";
+import { annotateBuildingFloors } from "./pipeline/building-floors.js";
 import * as WA from "./pipeline/world-align.js";
 
-const NORTH_TOLERANCE_DEG = 12; // how close to north counts as "facing north"
-const WALK_SPEED = 1.4;         // m/s
+const NORTH_TOLERANCE_DEG = 12;
+const GPS_GOOD_M = 8;    // green — good enough to anchor a walk
+const GPS_FAIR_M = 15;   // amber — keep walking
+const CAMPUS = { lat: 40.4433, lon: -79.9436 };
 const SAMPLE_HZ = 10;
 
 const S = {
   mode: "collector",
   stage: "start",
-  internalMode: true,
   source: "…",
-  walks: [], nodes: [], nodesGeo: [], nodesById: {}, graph: null, georef: null,
+  walks: [], nodes: [], nodesGeo: [], nodesById: {}, buildings: [],
+  graph: null, campus: null, frameGeoref: null, floorLinks: [], floorHeights: {},
   sim: {
-    heading: 137, x: 0, z: 0, floor: 0,
-    gpsAccuracy: 9, autoWalk: false, speed: WALK_SPEED,
-    target: null, gpsJitter: { dx: 0, dz: 0 },
+    heading: 137, x: 0, z: 0,
+    buildingId: null, floor: 1, altitude: 0,
+    gpsAccuracy: 24, seekingSignal: false,
+    autoWalk: false, speed: 1.4, target: null,
+    gpsJitter: { dx: 0, dz: 0 },
+    trackingGlitch: 0,
   },
-  rec: null,          // { points, startedAt, startNodeId, landmarks, northAligned, startHeading }
+  rec: null,
   recordings: [],
-  pick: { selectedId: null, showAll: false },
+  form: { query: "", selectedId: null, floor: 1 },  // building/floor declaration
   user: { startId: null, destId: null, result: null },
-  autoScript: null,   // running end-to-end simulation
+  autoScript: null,
   log: [],
 };
 
 const $ = (sel) => document.querySelector(sel);
 const screenEl = $("#screen");
 const railEl = $("#rail");
+const norm360 = (d) => ((d % 360) + 360) % 360;
+const offNorth = (h) => { const d = norm360(h); return d > 180 ? d - 360 : d; };
 
 function log(msg) {
   S.log.unshift(`${new Date().toLocaleTimeString().slice(0, 8)} ${msg}`);
@@ -50,59 +66,96 @@ function log(msg) {
 }
 
 // ---------------------------------------------------------------------------
+// simulated building altitudes
+// ---------------------------------------------------------------------------
+// Buildings sit at different grades and have different floor heights — that's
+// the whole reason floors can't be one global ladder — so the sim gives each a
+// deterministic base altitude and floor height derived from its id.
+function hashNum(s) {
+  let h = 0;
+  for (let i = 0; i < String(s).length; i++) h = (h * 31 + String(s).charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+const baseAltOf = (id) => (id ? (hashNum(id) % 300) / 10 : 0);        // 0–30 m
+const floorHeightOf = (id) => (id ? 3.6 + (hashNum(id) % 9) / 10 : 4.0); // 3.6–4.4 m
+
+// ---------------------------------------------------------------------------
 // data
 // ---------------------------------------------------------------------------
 async function loadAll() {
-  const [walks, nodes] = await Promise.all([
+  const [walks, nodes, buildings] = await Promise.all([
     loadWalks().catch(() => []),
     loadNodes().catch(() => []),
+    loadBuildings().catch(() => []),
   ]);
-  S.walks = walks;
+  S.buildings = buildings;
   S.nodes = nodes;
-  annotateFloors(S.walks);
-  rebuild();
+  S.campus = WA.makeCampusFrame(CAMPUS.lat, CAMPUS.lon);
 
-  // Derive a rough Earth anchor for the whole frame from whatever walks carry
-  // a GPS fix. Supabase currently drops startLatLon (no column for it), so this
-  // usually only finds fixes when reading the local web/data/*.json files.
-  S.georef = WA.estimateFrameGeoref(S.walks);
-  if (!S.georef) {
-    // No GPS anywhere in the data: fall back to a nominal campus origin so the
-    // location-scoped picker is still demonstrable. Clearly flagged in the rail.
-    S.georef = {
-      lat0: 40.44254, lon0: -79.94472, northOffsetDeg: 0,
-      ...WA.metersPerDeg(40.44254), n: 0, accuracyM: 25, northSpreadDeg: null,
-      synthetic: true,
-    };
-    log("no GPS in data — using a nominal campus origin");
+  // Legacy walks live in an arbitrary ARKit frame. Estimate where that frame
+  // sits on Earth, then re-express its points in the campus frame so old and
+  // new recordings share one coordinate system.
+  annotateFloors(walks);
+  S.frameGeoref = WA.estimateFrameGeoref(walks);
+  if (S.frameGeoref) {
+    log(`legacy frame: ${S.frameGeoref.n} GPS fix(es), north ±${(S.frameGeoref.northSpreadDeg ?? 0).toFixed(0)}°`);
+    S.walks = walks.map((w) => ({
+      ...w,
+      points: w.points.map((p) => {
+        const ll = WA.localToLatLon(p.x, p.z, S.frameGeoref);
+        const c = WA.latLonToLocal(ll.lat, ll.lon, S.campus);
+        return { ...p, x: c.x, z: c.z };
+      }),
+    }));
   } else {
-    log(`georef from ${S.georef.n} GPS fix(es), ±${S.georef.accuracyM.toFixed(1)}m`);
+    S.walks = walks;
+    log("no GPS on any walk — legacy paths left in their raw frame");
   }
-  S.nodesGeo = WA.nodesWithLatLon(S.nodes, S.georef);
+
+  // Registry nodes ride along in the same frame.
+  const nodeGeoref = S.frameGeoref || S.campus;
+  S.nodesGeo = WA.nodesWithLatLon(nodes, nodeGeoref).map((n) => {
+    const c = WA.latLonToLocal(n.lat, n.lon, S.campus);
+    return { ...n, x: c.x, z: c.z };
+  });
   S.nodesById = Object.fromEntries(S.nodesGeo.map((n) => [n.id, n]));
 
-  // stand the avatar on a real node so the sim starts somewhere sensible
-  const first = S.nodesGeo[0];
-  if (first) { S.sim.x = first.x; S.sim.z = first.z; S.sim.floor = first.floor || 0; }
+  rebuild();
 
-  S.source = S.walks.length
-    ? `${S.walks.length} walks · ${S.nodes.length} nodes`
-    : "no data";
+  // stand the collector at a real building so the sim starts somewhere sensible
+  const seed = S.buildings.find((b) => b.id === "wean-hall") || S.buildings[0];
+  if (seed) {
+    const c = WA.latLonToLocal(seed.lat, seed.lon, S.campus);
+    S.sim.x = c.x; S.sim.z = c.z;
+    S.sim.buildingId = null; // not declared until the collector says so
+    S.sim.altitude = baseAltOf(seed.id) + 1 * floorHeightOf(seed.id);
+  }
+
+  S.source = `${S.walks.length} walks · ${S.nodes.length} nodes · ${S.buildings.length} buildings`;
   render();
 }
 
 function rebuild() {
-  S.graph = buildGraph(S.walks);
+  // Split on tracking loss BEFORE clustering, so a relocalization jump becomes
+  // a gap instead of a fabricated corridor of synthetic nodes.
+  const fragments = splitOnTrackingLoss(S.walks);
+  const declared = fragments.filter((w) => w.startEntrance);
+  const legacy = fragments.filter((w) => !w.startEntrance);
+  const res = annotateBuildingFloors(declared, { buildings: S.buildings });
+  S.floorLinks = res.floorLinks;
+  S.floorHeights = res.floorHeights;
+  if (legacy.length) annotateFloors(legacy);
+  S.graph = buildGraph(fragments);
 }
 
-// current simulated GPS reading (true position + a wander that mimics drift).
-// Returns nulls until the georeference is resolved, since the render loop
-// starts before loadAll() finishes.
 function simGps() {
-  if (!S.georef) return { lat: null, lon: null };
+  if (!S.campus) return { lat: null, lon: null };
   const { x, z, gpsJitter } = S.sim;
-  return WA.localToLatLon(x + gpsJitter.dx, z + gpsJitter.dz, S.georef);
+  return WA.localToLatLon(x + gpsJitter.dx, z + gpsJitter.dz, S.campus);
 }
+
+const gpsQuality = () =>
+  S.sim.gpsAccuracy <= GPS_GOOD_M ? "good" : S.sim.gpsAccuracy <= GPS_FAIR_M ? "fair" : "poor";
 
 function nearbyNodes(k = 5) {
   const { lat, lon } = simGps();
@@ -110,22 +163,40 @@ function nearbyNodes(k = 5) {
   return WA.nearestNodesToLatLon(S.nodesGeo, lat, lon, { k });
 }
 
+const buildingName = (id) =>
+  S.buildings.find((b) => b.id === id)?.name || id || "—";
+
 // ---------------------------------------------------------------------------
 // recording
 // ---------------------------------------------------------------------------
-function beginRecording(startNodeId) {
-  const node = S.nodesById[startNodeId];
-  if (node) { S.sim.x = node.x; S.sim.z = node.z; S.sim.floor = node.floor || 0; }
+function beginRecording() {
+  const fix = simGps();
+  S.sim.altitude = baseAltOf(S.sim.buildingId) + S.sim.floor * floorHeightOf(S.sim.buildingId);
   S.rec = {
-    points: [{ t: 0, x: S.sim.x, y: floorAltitude(S.sim.floor), z: S.sim.z, floor: S.sim.floor, tracking: "normal" }],
     startedAt: performance.now(),
-    startNodeId: startNodeId || null,
+    baseAltitude: S.sim.altitude,
+    startEntrance: {
+      buildingId: S.sim.buildingId,
+      buildingName: buildingName(S.sim.buildingId),
+      floor: S.sim.floor,
+      lat: fix.lat, lon: fix.lon, gpsAccuracy: S.sim.gpsAccuracy,
+      t: 0,
+    },
+    buildingTransitions: [],
     landmarks: [],
-    northAligned: true,
-    startHeading: { trueHeading: 0, accuracy: 3, calibrated: true },
-    startLatLon: { ...simGps(), gpsAccuracy: S.sim.gpsAccuracy },
+    points: [samplePoint(0)],
   };
-  log(`recording started at ${startNodeId || "(no node)"}`);
+  log(`recording started · ${buildingName(S.sim.buildingId)} floor ${S.sim.floor}`);
+}
+
+function samplePoint(t) {
+  return {
+    t,
+    x: S.sim.x, y: S.sim.altitude, z: S.sim.z,
+    relAltitude: S.sim.altitude - (S.rec ? S.rec.baseAltitude : S.sim.altitude),
+    // a forced glitch marks points as untracked so the split can be demonstrated
+    tracking: S.sim.trackingGlitch > 0 ? "notAvailable" : "normal",
+  };
 }
 
 function recordSample() {
@@ -133,45 +204,66 @@ function recordSample() {
   const t = (performance.now() - S.rec.startedAt) / 1000;
   const last = S.rec.points[S.rec.points.length - 1];
   if (last && t - last.t < 1 / SAMPLE_HZ) return;
-  S.rec.points.push({
-    t, x: S.sim.x, y: floorAltitude(S.sim.floor), z: S.sim.z,
-    floor: S.sim.floor, tracking: "normal",
+  S.rec.points.push(samplePoint(t));
+}
+
+// The collector crossed into a new building — usually because they saw signage.
+// This re-bases the floor ladder: altitude is unchanged (you're at the same
+// physical level) but the building and its floor NUMBER both change.
+function declareTransition(buildingId, floor) {
+  if (!S.rec) return;
+  const t = (performance.now() - S.rec.startedAt) / 1000;
+  S.rec.buildingTransitions.push({
+    buildingId, buildingName: buildingName(buildingId), floor, t,
   });
+  const wasBuilding = S.sim.buildingId, wasFloor = S.sim.floor;
+  S.sim.buildingId = buildingId;
+  S.sim.floor = floor;           // altitude deliberately NOT changed
+  log(`crossed ${buildingName(wasBuilding)} ${wasFloor} → ${buildingName(buildingId)} ${floor}`);
 }
 
 function finishRecording(name) {
   if (!S.rec) return null;
+  const fix = simGps();
+  const t = (performance.now() - S.rec.startedAt) / 1000;
   const walk = {
-    schemaVersion: 4,
+    schemaVersion: 5,
     id: `proto-${Date.now()}`,
     name: name || null,
     device: "prototype",
     recordedAt: new Date().toISOString(),
     unit: "meters", up: "y",
-    startAnchorId: S.rec.startNodeId || "prototype",
-    startNodeId: S.rec.startNodeId,
-    // The whole point of the calibration step: no rotation has to be estimated
-    // downstream. The sim's frame is north-referenced, so its points really are
-    // aligned and the offset is 0. On a real device the frame is fixed at
-    // SESSION start, so the recorder stores the camera yaw captured at the
-    // confirmation tap here instead — see docs/path-schema.md §North calibration.
-    northAligned: true,
-    northOffsetDeg: 0,
-    startHeading: S.rec.startHeading,
-    startLatLon: S.rec.startLatLon,
+    northAligned: true, northOffsetDeg: 0,
+    startHeading: { trueHeading: 0, accuracy: 3, calibrated: true },
+    startEntrance: S.rec.startEntrance,
+    buildingTransitions: S.rec.buildingTransitions,
+    endEntrance: {
+      buildingId: S.sim.buildingId,
+      buildingName: buildingName(S.sim.buildingId),
+      floor: S.sim.floor,
+      lat: fix.lat, lon: fix.lon, gpsAccuracy: S.sim.gpsAccuracy,
+      t,
+    },
     landmarks: S.rec.landmarks,
     points: S.rec.points,
   };
-  S.recordings.unshift(walk);
-  S.walks.push(walk);
-  annotateFloors(S.walks);
+
+  // Place it into the campus frame from its two entrance fixes, exactly as the
+  // real pipeline would, so the drift correction is visible in the prototype.
+  const placed = WA.placeWalkByEntrances(walk, S.campus);
+  const finalWalk = placed.placed ? placed : walk;
+  S.recordings.unshift(finalWalk);
+  S.walks.push(finalWalk);
   rebuild();
-  log(`saved ${walk.id} · ${walk.points.length} pts · ${pathLength(walk.points).toFixed(0)}m`);
+
+  const p = placed.placement || {};
+  log(`saved ${walk.id} · ${walk.points.length} pts · ` +
+      (p.residualM != null ? `drift ${p.residualM.toFixed(1)}m ${p.driftCorrected ? "corrected" : "UNCORRECTED"}` : "no end fix"));
+  if (p.northCheckDeg != null) log(`north cross-check: off by ${p.northCheckDeg.toFixed(1)}°`);
   S.rec = null;
-  return walk;
+  return finalWalk;
 }
 
-const floorAltitude = (f) => f * 4.0;
 function pathLength(points) {
   let d = 0;
   for (let i = 1; i < points.length; i++) {
@@ -189,6 +281,11 @@ function stepForward(meters) {
   S.sim.z += -Math.cos(h) * meters;
 }
 
+function changeFloor(delta) {
+  S.sim.floor += delta;
+  S.sim.altitude += delta * floorHeightOf(S.sim.buildingId);
+}
+
 function graphNeighbors(key) {
   const out = [];
   if (!S.graph) return out;
@@ -199,23 +296,20 @@ function graphNeighbors(key) {
   return out.filter(Boolean);
 }
 
-function nearestGraphKey(x, z, floor) {
+function nearestGraphNode(x, z) {
   if (!S.graph) return null;
   let best = null, bestD = Infinity;
   for (const n of S.graph.nodes.values()) {
-    if (floor != null && n.floor !== floor) continue;
     const d = Math.hypot(n.x - x, n.z - z);
     if (d < bestD) { bestD = d; best = n; }
   }
   return best;
 }
 
-// Auto-walk follows real graph edges (so simulated paths look like corridors,
-// not random drift), turning the heading toward each successive node.
 function autoWalkTick(dt) {
-  if (!S.graph || !S.graph.nodes.size) return;
+  if (!S.graph || !S.graph.nodes.size) { stepForward(S.sim.speed * dt); return; }
   if (!S.sim.target) {
-    const here = nearestGraphKey(S.sim.x, S.sim.z, null);
+    const here = nearestGraphNode(S.sim.x, S.sim.z);
     const opts = here ? graphNeighbors(here.key) : [];
     S.sim.target = opts.length
       ? opts[Math.floor(Math.random() * opts.length)]
@@ -224,8 +318,7 @@ function autoWalkTick(dt) {
   const t = S.sim.target;
   const dx = t.x - S.sim.x, dz = t.z - S.sim.z;
   const dist = Math.hypot(dx, dz);
-  if (dist < 0.35) {
-    S.sim.floor = t.floor;
+  if (dist < 0.4) {
     const opts = graphNeighbors(t.key);
     S.sim.target = opts.length ? opts[Math.floor(Math.random() * opts.length)] : null;
     return;
@@ -236,10 +329,6 @@ function autoWalkTick(dt) {
   S.sim.z += (dz / dist) * step;
 }
 
-const norm360 = (d) => ((d % 360) + 360) % 360;
-// signed difference from north, in [-180, 180]
-const offNorth = (h) => { const d = norm360(h); return d > 180 ? d - 360 : d; };
-
 // ---------------------------------------------------------------------------
 // main loop
 // ---------------------------------------------------------------------------
@@ -249,11 +338,18 @@ function tick(now) {
   lastT = now;
 
   if (S.sim.autoWalk) autoWalkTick(dt);
-  // GPS wander: a slow random walk bounded by the accuracy radius
+  if (S.sim.trackingGlitch > 0) S.sim.trackingGlitch -= dt;
+
+  // "Step outside": signal improves as the collector leaves the building.
+  if (S.sim.seekingSignal) {
+    S.sim.gpsAccuracy = Math.max(3.5, S.sim.gpsAccuracy - dt * 6);
+    if (S.sim.gpsAccuracy <= 4) S.sim.seekingSignal = false;
+  }
+
   const j = S.sim.gpsJitter;
   j.dx += (Math.random() - 0.5) * dt * 2;
   j.dz += (Math.random() - 0.5) * dt * 2;
-  const jm = Math.hypot(j.dx, j.dz), cap = S.sim.gpsAccuracy * 0.6;
+  const jm = Math.hypot(j.dx, j.dz), cap = S.sim.gpsAccuracy * 0.5;
   if (jm > cap) { j.dx *= cap / jm; j.dz *= cap / jm; }
 
   if (S.rec) recordSample();
@@ -263,13 +359,12 @@ function tick(now) {
   requestAnimationFrame(tick);
 }
 
-// Only the canvases + a few live readouts update per frame; the rest of the DOM
-// re-renders on state changes, so typing in the rail doesn't fight the loop.
 function redrawLive() {
   const map = $("#map");
   if (map) drawMap(map);
   const comp = $("#compass");
   if (comp) drawCompass(comp);
+
   const hr = $("#heading-read");
   if (hr) {
     const off = offNorth(S.sim.heading);
@@ -280,19 +375,37 @@ function redrawLive() {
     if (hint) {
       hint.className = "heading-hint" + (ok ? " ok" : "");
       hint.textContent = ok
-        ? "✓ Facing north — you can start walking."
+        ? "✓ Facing north — confirm to continue."
         : `Turn ${off > 0 ? "left" : "right"} ${Math.abs(Math.round(off))}° to face north.`;
     }
     const btn = $("#confirm-north");
     if (btn) btn.disabled = !ok;
   }
+
+  // GPS gate screens
+  const dot = $("#sig-dot");
+  if (dot) {
+    const q = gpsQuality();
+    dot.className = "sig-dot " + q;
+    const label = $("#sig-label");
+    if (label) {
+      label.textContent = { good: "GOOD SIGNAL", fair: "FAIR — KEEP WALKING", poor: "POOR SIGNAL" }[q];
+      label.className = "sig-label " + q;
+    }
+    const acc = $("#sig-acc");
+    if (acc) acc.textContent = `±${S.sim.gpsAccuracy.toFixed(1)} m`;
+    const go = $("#sig-continue");
+    if (go) go.disabled = q !== "good";
+  }
+
   for (const [id, val] of Object.entries(liveReadouts())) {
     const el = document.getElementById(id);
     if (el) el.textContent = val;
   }
-  // keep the heading slider following the sim (auto-walk steers it too)
   const hs = document.getElementById("r-heading");
   if (hs) hs.value = String(Math.round(norm360(S.sim.heading)));
+  const gs = document.getElementById("r-gps");
+  if (gs && document.activeElement !== gs) gs.value = String(Math.round(S.sim.gpsAccuracy));
 }
 
 function liveReadouts() {
@@ -301,12 +414,14 @@ function liveReadouts() {
     out["st-pts"] = S.rec.points.length;
     out["st-dist"] = `${pathLength(S.rec.points).toFixed(0)}m`;
     out["st-time"] = `${((performance.now() - S.rec.startedAt) / 1000).toFixed(0)}s`;
-    out["st-floor"] = `F${S.sim.floor}`;
+    out["st-bldg"] = `${buildingName(S.sim.buildingId).split(" ")[0]} ${S.sim.floor}`;
   }
   const g = simGps();
-  out["dbg-pos"] = `${S.sim.x.toFixed(1)}, ${S.sim.z.toFixed(1)} · F${S.sim.floor}`;
+  out["dbg-pos"] = `${S.sim.x.toFixed(1)}, ${S.sim.z.toFixed(1)}`;
   out["dbg-gps"] = g.lat == null ? "—" : `${g.lat.toFixed(5)}, ${g.lon.toFixed(5)}`;
   out["dbg-heading"] = `${Math.round(norm360(S.sim.heading))}°`;
+  out["dbg-alt"] = `${S.sim.altitude.toFixed(1)}m`;
+  out["dbg-where"] = `${buildingName(S.sim.buildingId)} · F${S.sim.floor}`;
   out["lbl-gps"] = `GPS accuracy · ±${Math.round(S.sim.gpsAccuracy)}m`;
   out["lbl-speed"] = `Speed · ${S.sim.speed.toFixed(1)} m/s`;
   return out;
@@ -324,41 +439,37 @@ function drawMap(canvas) {
   }
   const ctx = canvas.getContext("2d");
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, w, h);
   ctx.fillStyle = "#020610";
   ctx.fillRect(0, 0, w, h);
-  if (!S.graph || !S.graph.nodes.size) return;
 
-  // fit to this floor's nodes, always including the avatar
-  let minX = S.sim.x, maxX = S.sim.x, minZ = S.sim.z, maxZ = S.sim.z;
-  for (const n of S.graph.nodes.values()) {
-    if (n.floor !== S.sim.floor) continue;
-    minX = Math.min(minX, n.x); maxX = Math.max(maxX, n.x);
-    minZ = Math.min(minZ, n.z); maxZ = Math.max(maxZ, n.z);
-  }
-  const pad = 14;
-  const spanX = Math.max(maxX - minX, 6), spanZ = Math.max(maxZ - minZ, 6);
-  const scale = Math.min((w - pad * 2) / spanX, (h - pad * 2) / spanZ);
-  const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
-  const px = (x) => (x - cx) * scale + w / 2;
-  const py = (z) => (z - cz) * scale + h / 2;
+  // follow the collector at a fixed scale — a campus-wide fit would be useless
+  const scale = +canvas.dataset.scale || 3.2;
+  const px = (x) => (x - S.sim.x) * scale + w / 2;
+  const py = (z) => (z - S.sim.z) * scale + h / 2;
 
-  // edges on this floor
-  ctx.strokeStyle = "rgba(120, 190, 230, 0.28)";
-  ctx.lineWidth = 1;
-  for (const e of S.graph.edges.values()) {
-    const a = S.graph.nodes.get(e.a), b = S.graph.nodes.get(e.b);
-    if (!a || !b || a.floor !== S.sim.floor || b.floor !== S.sim.floor) continue;
-    ctx.beginPath(); ctx.moveTo(px(a.x), py(a.z)); ctx.lineTo(px(b.x), py(b.z)); ctx.stroke();
+  // nearby building footprint markers
+  if (S.buildings.length && S.campus) {
+    ctx.font = "9px ui-monospace, monospace";
+    for (const b of S.buildings) {
+      const c = WA.latLonToLocal(b.lat, b.lon, S.campus);
+      const sx = px(c.x), sy = py(c.z);
+      if (sx < -40 || sy < -40 || sx > w + 40 || sy > h + 40) continue;
+      ctx.fillStyle = b.id === S.sim.buildingId ? "rgba(251,191,36,0.85)" : "rgba(143,182,207,0.4)";
+      ctx.beginPath(); ctx.arc(sx, sy, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillText(b.name.split(" ")[0], sx + 5, sy + 3);
+    }
   }
-  // registry nodes on this floor
-  for (const n of S.nodesGeo) {
-    if ((n.floor || 0) !== S.sim.floor) continue;
-    ctx.beginPath(); ctx.arc(px(n.x), py(n.z), 2.6, 0, Math.PI * 2);
-    ctx.fillStyle = n.id === S.pick.selectedId ? "#fbbf24" : "rgba(125, 232, 247, 0.8)";
-    ctx.fill();
+
+  if (S.graph) {
+    ctx.strokeStyle = "rgba(120, 190, 230, 0.3)";
+    ctx.lineWidth = 1;
+    for (const e of S.graph.edges.values()) {
+      const a = S.graph.nodes.get(e.a), b = S.graph.nodes.get(e.b);
+      if (!a || !b) continue;
+      ctx.beginPath(); ctx.moveTo(px(a.x), py(a.z)); ctx.lineTo(px(b.x), py(b.z)); ctx.stroke();
+    }
   }
-  // route (user mode)
+
   const r = S.user.result;
   if (r && r.nodes.length > 1) {
     ctx.strokeStyle = "#eafdff"; ctx.lineWidth = 2.5;
@@ -366,27 +477,35 @@ function drawMap(canvas) {
     r.nodes.forEach((n, i) => (i ? ctx.lineTo(px(n.x), py(n.z)) : ctx.moveTo(px(n.x), py(n.z))));
     ctx.stroke();
   }
-  // live recording trail
+
   if (S.rec && S.rec.points.length > 1) {
     ctx.strokeStyle = "#22d3ee"; ctx.lineWidth = 2;
     ctx.beginPath();
     S.rec.points.forEach((p, i) => (i ? ctx.lineTo(px(p.x), py(p.z)) : ctx.moveTo(px(p.x), py(p.z))));
     ctx.stroke();
+    for (const tr of S.rec.buildingTransitions) {
+      const pt = S.rec.points.find((p) => p.t >= tr.t);
+      if (!pt) continue;
+      ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(px(pt.x), py(pt.z), 6, 0, Math.PI * 2); ctx.stroke();
+    }
     for (const lm of S.rec.landmarks) {
       ctx.fillStyle = "#fbbf24";
       ctx.beginPath(); ctx.arc(px(lm.x), py(lm.z), 3.5, 0, Math.PI * 2); ctx.fill();
     }
   }
+
   // GPS accuracy halo
   const gpsR = S.sim.gpsAccuracy * scale;
   if (gpsR > 2) {
-    ctx.fillStyle = "rgba(34, 211, 238, 0.07)";
-    ctx.strokeStyle = "rgba(34, 211, 238, 0.25)";
+    const q = gpsQuality();
+    ctx.fillStyle = q === "good" ? "rgba(52,224,122,0.08)" : "rgba(251,191,36,0.07)";
+    ctx.strokeStyle = q === "good" ? "rgba(52,224,122,0.35)" : "rgba(251,191,36,0.3)";
     ctx.beginPath();
     ctx.arc(px(S.sim.x + S.sim.gpsJitter.dx), py(S.sim.z + S.sim.gpsJitter.dz), gpsR, 0, Math.PI * 2);
     ctx.fill(); ctx.stroke();
   }
-  // avatar + heading cone
+
   const ax = px(S.sim.x), az = py(S.sim.z);
   const hr = S.sim.heading * Math.PI / 180;
   ctx.fillStyle = "rgba(52, 224, 122, 0.25)";
@@ -399,11 +518,11 @@ function drawMap(canvas) {
 }
 
 // ---------------------------------------------------------------------------
-// canvas: compass dial for the north-calibration step
+// canvas: compass
 // ---------------------------------------------------------------------------
 function drawCompass(canvas) {
   const dpr = Math.min(devicePixelRatio || 1, 2);
-  const size = 230;
+  const size = 210;
   if (canvas.width !== size * dpr) {
     canvas.width = canvas.height = size * dpr;
     canvas.style.width = canvas.style.height = size + "px";
@@ -415,7 +534,6 @@ function drawCompass(canvas) {
   const off = offNorth(S.sim.heading);
   const ok = Math.abs(off) <= NORTH_TOLERANCE_DEG;
 
-  // target wedge: where north currently sits relative to the phone's facing
   ctx.save();
   ctx.translate(c, c);
   ctx.rotate(-S.sim.heading * Math.PI / 180);
@@ -425,7 +543,6 @@ function drawCompass(canvas) {
   ctx.arc(0, 0, R, -Math.PI / 2 - tol, -Math.PI / 2 + tol);
   ctx.closePath(); ctx.fill();
 
-  // rotating dial: ticks + cardinal letters
   ctx.strokeStyle = "rgba(125,232,247,0.5)";
   ctx.lineWidth = 1;
   ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.stroke();
@@ -448,7 +565,6 @@ function drawCompass(canvas) {
   });
   ctx.restore();
 
-  // fixed phone pointer at the top
   ctx.fillStyle = ok ? "#34e07a" : "#22d3ee";
   ctx.beginPath();
   ctx.moveTo(c, 8); ctx.lineTo(c - 8, 26); ctx.lineTo(c + 8, 26);
@@ -458,7 +574,6 @@ function drawCompass(canvas) {
   ctx.fillText("PHONE", c, 34);
 }
 
-// dragging the dial rotates the simulated phone
 function wireCompassDrag(canvas) {
   let dragging = false, lastAngle = 0;
   const angleAt = (e) => {
@@ -478,161 +593,295 @@ function wireCompassDrag(canvas) {
 }
 
 // ---------------------------------------------------------------------------
+// shared UI fragments
+// ---------------------------------------------------------------------------
+function signalBlock(hint) {
+  return `
+    <div class="sig-wrap">
+      <div class="sig-dot poor" id="sig-dot"></div>
+      <div class="sig-label poor" id="sig-label">—</div>
+      <div class="sig-acc" id="sig-acc">—</div>
+      <div class="sub" style="text-align:center;font-size:11.5px;margin-top:8px">${hint}</div>
+    </div>`;
+}
+
+// Building declaration: type a name, confirm from ranked candidates, set floor.
+function buildingForm(promptText) {
+  const fix = simGps();
+  const list = S.form.query.trim()
+    ? resolveBuilding(S.form.query, S.buildings, { lat: fix.lat, lon: fix.lon, limit: 5 })
+    : buildingsNear(S.buildings, fix.lat, fix.lon, { limit: 5 });
+  return `
+    <div class="sub" style="margin-bottom:6px">${promptText}</div>
+    <input id="bq" type="text" placeholder="Type a building name…" value="${S.form.query.replace(/"/g, "&quot;")}"
+      style="width:100%;font:inherit;padding:11px;border-radius:10px;background:#061020;color:var(--text);border:1px solid var(--line)"/>
+    <div style="flex:1;overflow-y:auto;min-height:0;margin-top:8px">
+      ${list.length ? list.map((b) => `
+        <button class="card ${S.form.selectedId === b.id ? "sel" : ""}" data-bid="${b.id}">
+          ${b.distanceM != null ? `<span class="dist">${b.distanceM.toFixed(0)}m</span>` : ""}
+          <div class="nm">${b.name}</div>
+          <div class="meta">${b.nameScore ? `match ${(b.nameScore * 100).toFixed(0)}%` : "nearby"}${b.levels ? ` · ${b.levels} levels` : ""}</div>
+        </button>`).join("")
+        : `<div class="sub">No match. Try fewer letters.</div>`}
+    </div>
+    <div class="floor-row">
+      <span class="sub" style="margin:0">Floor you'll be on</span>
+      <div class="stepper">
+        <button data-fl="-1">−</button>
+        <b id="floor-val">${S.form.floor}</b>
+        <button data-fl="1">+</button>
+      </div>
+    </div>`;
+}
+
+function wireBuildingForm(onPick) {
+  const q = $("#bq");
+  if (q) {
+    q.oninput = (e) => { S.form.query = e.target.value; S.form.selectedId = null; render(); $("#bq")?.focus(); };
+  }
+  document.querySelectorAll("[data-bid]").forEach((b) => {
+    b.onclick = () => { S.form.selectedId = b.dataset.bid; render(); };
+  });
+  document.querySelectorAll("[data-fl]").forEach((b) => {
+    b.onclick = () => { S.form.floor += +b.dataset.fl; render(); };
+  });
+  const go = $("#form-go");
+  if (go) go.onclick = () => onPick(S.form.selectedId, S.form.floor);
+}
+
+// ---------------------------------------------------------------------------
 // screens
 // ---------------------------------------------------------------------------
 const screens = {
-  // ---- collector ----
   start: () => ({
     label: "COLLECTOR · START",
     html: `
-      <div style="text-align:center"><span class="pill">END-GOAL UX</span></div>
+      <div style="text-align:center"><span class="pill">DATA COLLECTOR</span></div>
       <div class="spacer"></div>
       <div style="text-align:center">
         <button class="big" id="go" style="width:184px;height:184px;border-radius:50%;font-size:19px;line-height:1.25">
           🧭<br/>Start<br/>Mapping
         </button>
-        <div class="sub" style="margin-top:20px">No setup — just face north and walk.<br/>The map builds itself.</div>
+        <div class="sub" style="margin-top:20px">Start at a building entrance,<br/>finish at one too.</div>
       </div>
       <div class="spacer"></div>
-      <div style="border:1px dashed rgba(251,191,36,0.55);border-radius:12px;padding:10px 12px">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--amber);font-weight:700">
-          <input type="checkbox" id="internal" ${S.internalMode ? "checked" : ""}/>
-          INTERNAL · data-collection mode
-        </label>
-        <div class="sub" style="margin:6px 0 0;font-size:11px">
-          ${S.internalMode
-            ? "Adds the start-node step after north calibration."
-            : "One-tap capture — north calibration only."}
-        </div>
+      <div class="note">
+        Every path is anchored by GPS at both ends and by facing north at the
+        start — that's what lets separate walks line up on one campus map.
       </div>
       <button class="ghost" id="recs">Recordings (${S.recordings.length})</button>
       <div class="sub" style="text-align:center;margin:8px 0 0;font-size:10.5px">${S.source}</div>`,
     wire: () => {
-      $("#go").onclick = () => go("north");
-      $("#internal").onchange = (e) => { S.internalMode = e.target.checked; render(); };
+      $("#go").onclick = () => {
+        S.sim.gpsAccuracy = 24; S.sim.seekingSignal = false;
+        S.form = { query: "", selectedId: null, floor: 1 };
+        go("gps");
+      };
       $("#recs").onclick = () => go("recordings");
     },
   }),
 
+  gps: () => ({
+    label: "COLLECTOR · GPS LOCK",
+    html: `
+      <h2 class="title">Step outside</h2>
+      <div class="sub">Stand just outside the entrance you're about to use. Indoors the fix is too poor to anchor a path.</div>
+      ${signalBlock("Walk out until the dot turns green.")}
+      <canvas id="map" class="map" data-h="140" data-scale="1.6"></canvas>
+      <div class="spacer"></div>
+      <button class="ghost" id="outside">🚪 Step outside (simulate)</button>
+      <button class="big" id="sig-continue" disabled>Continue</button>
+      <button class="ghost" id="back">Back</button>`,
+    wire: () => {
+      $("#outside").onclick = () => { S.sim.seekingSignal = true; log("walking outside for signal…"); };
+      $("#sig-continue").onclick = () => go("entrance");
+      $("#back").onclick = () => go("start");
+    },
+  }),
+
+  entrance: () => ({
+    label: "COLLECTOR · ENTRANCE",
+    html: `
+      <h2 class="title">Which building?</h2>
+      ${buildingForm("You're at its entrance. Pick the building you're about to enter, and the floor you'll walk in on.")}
+      <button class="big" id="form-go" ${S.form.selectedId ? "" : "disabled"}>Confirm entrance</button>
+      <button class="ghost" id="back">Back</button>`,
+    wire: () => {
+      wireBuildingForm((id, floor) => {
+        S.sim.buildingId = id;
+        S.sim.floor = floor;
+        log(`entrance: ${buildingName(id)} floor ${floor}`);
+        go("north");
+      });
+      $("#back").onclick = () => go("gps");
+    },
+  }),
+
   north: () => ({
-    label: "COLLECTOR · NORTH CALIBRATION",
+    label: "COLLECTOR · NORTH",
     html: `
       <h2 class="title">Face north</h2>
-      <div class="sub">Turn your body until the marker lines up with N, then confirm. This gives every path the same starting direction.</div>
+      <div class="sub">Turn until the marker lines up with N. This fixes the path's rotation — the compass alone is off by 15–25° indoors.</div>
       <div class="compass-wrap">
         <canvas id="compass" class="compass"></canvas>
         <div class="heading-read" id="heading-read">—</div>
         <div class="heading-hint" id="heading-hint"></div>
       </div>
       <div class="spacer"></div>
-      <div class="sub" style="font-size:11px;border-left:2px solid var(--cyan);padding-left:9px">
-        Without this, each path's heading is whatever the magnetometer guessed
-        (±15–25° indoors) and every walk has to be rotated into place later.
-      </div>
       <button class="big" id="confirm-north" disabled>Confirm facing north</button>
       <button class="ghost" id="back">Back</button>`,
     wire: () => {
       wireCompassDrag($("#compass"));
       $("#confirm-north").onclick = () => {
-        log(`north confirmed at ${Math.round(norm360(S.sim.heading))}° (off by ${Math.round(offNorth(S.sim.heading))}°)`);
-        // treat the confirmed facing as true north: zero the frame
+        log(`north confirmed (off by ${Math.round(offNorth(S.sim.heading))}°)`);
         S.sim.heading = 0;
-        if (!S.internalMode) beginRecording(null);
-        go(S.internalMode ? "pickStart" : "live");
+        go("ready");
       };
-      $("#back").onclick = () => go("start");
+      $("#back").onclick = () => go("entrance");
     },
   }),
 
-  pickStart: () => {
-    const list = S.pick.showAll
-      ? S.nodesGeo.map((n) => ({ ...n, distanceM: null })).slice(0, 60)
-      : nearbyNodes(5);
-    const g = simGps();
-    return {
-      label: "COLLECTOR · START NODE",
-      html: `
-        <h2 class="title">Where are you?</h2>
-        <div class="sub">Rough location picked these out of ${S.nodesGeo.length} nodes.</div>
-        <canvas id="map" class="map" data-h="150"></canvas>
-        <div class="kv" style="margin:8px 0 10px;font-size:11px">
-          <span>GPS ${g.lat.toFixed(5)}, ${g.lon.toFixed(5)}</span>
-          <b>±${Math.round(S.sim.gpsAccuracy)}m</b>
-        </div>
-        <div style="flex:1;overflow-y:auto;min-height:0">
-          ${list.length ? list.map((n) => `
-            <button class="card ${S.pick.selectedId === n.id ? "sel" : ""}" data-id="${n.id}">
-              ${n.distanceM != null ? `<span class="dist">${n.distanceM.toFixed(0)}m</span>` : ""}
-              <div class="nm">${n.name || n.id}</div>
-              <div class="meta">Floor ${n.floor ?? 0} · ${n.geoDerived ? "derived position" : "surveyed"}</div>
-            </button>`).join("")
-            : `<div class="sub">No nodes available.</div>`}
-        </div>
-        <button class="ghost" id="toggle-all">${S.pick.showAll ? "← Show only nearby" : "None of these — show all"}</button>
-        <button class="big" id="confirm" ${S.pick.selectedId ? "" : "disabled"}>Start mapping here</button>`,
-      wire: () => {
-        document.querySelectorAll(".card[data-id]").forEach((b) => {
-          b.onclick = () => { S.pick.selectedId = b.dataset.id; render(); };
-        });
-        $("#toggle-all").onclick = () => { S.pick.showAll = !S.pick.showAll; render(); };
-        $("#confirm").onclick = () => { beginRecording(S.pick.selectedId); go("live"); };
-      },
-    };
-  },
+  ready: () => ({
+    label: "COLLECTOR · READY",
+    html: `
+      <div class="spacer"></div>
+      <div style="text-align:center">
+        <div style="font-size:52px">✓</div>
+        <h2 class="title" style="margin-top:10px">You're set</h2>
+        <div class="sub">Start recording, then walk. Tell the app whenever you cross into a new building.</div>
+      </div>
+      <div class="summary">
+        <div class="kv"><span>Entrance</span><b>${buildingName(S.sim.buildingId)}</b></div>
+        <div class="kv"><span>Floor</span><b>${S.sim.floor}</b></div>
+        <div class="kv"><span>GPS</span><b style="color:var(--green)">±${S.sim.gpsAccuracy.toFixed(1)}m</b></div>
+        <div class="kv"><span>North</span><b style="color:var(--green)">✓ calibrated</b></div>
+      </div>
+      <div class="spacer"></div>
+      <button class="big" id="rec">● Start recording</button>`,
+    wire: () => {
+      $("#rec").onclick = () => { beginRecording(); go("live"); };
+    },
+  }),
 
   live: () => ({
-    label: "COLLECTOR · LIVE MAPPING",
+    label: "COLLECTOR · RECORDING",
     html: `
-      <div style="display:flex;align-items:center;gap:8px">
-        <span class="pill green">● RECORDING</span>
-        <span class="pill">N-ALIGNED</span>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <span class="pill green">● REC</span>
+        <span class="pill amber" id="where-pill">${buildingName(S.sim.buildingId)} · F${S.sim.floor}</span>
       </div>
       <div class="stats">
         <div class="stat"><b id="st-pts">0</b><span>POINTS</span></div>
-        <div class="stat"><b id="st-dist">0m</b><span>DISTANCE</span></div>
-        <div class="stat"><b id="st-time">0s</b><span>ELAPSED</span></div>
-        <div class="stat"><b id="st-floor">F0</b><span>FLOOR</span></div>
+        <div class="stat"><b id="st-dist">0m</b><span>DIST</span></div>
+        <div class="stat"><b id="st-time">0s</b><span>TIME</span></div>
+        <div class="stat"><b id="st-bldg">—</b><span>WHERE</span></div>
       </div>
-      <canvas id="map" class="map" data-h="300"></canvas>
-      <div class="sub" style="margin:10px 0 4px;font-size:11px">Drop a landmark</div>
+      <canvas id="map" class="map" data-h="240" data-scale="3.2"></canvas>
+      <button class="big" id="cross" style="background:var(--amber);color:#1a1204;margin-top:10px">
+        ⇄ I've entered a new building
+      </button>
+      <div class="sub" style="margin:10px 0 4px;font-size:11px">Landmark</div>
       <div class="row">
         ${["Door", "Stairs", "Elevator", "Room"].map((l) =>
-          `<button class="ghost" style="margin:0;font-size:11px;padding:9px 4px" data-lm="${l}">${l}</button>`).join("")}
+          `<button class="ghost" style="margin:0;font-size:11px;padding:8px 4px" data-lm="${l}">${l}</button>`).join("")}
       </div>
+      ${S.rec?.buildingTransitions.length ? `
+        <div class="sub" style="margin-top:10px;font-size:11px">Crossings so far</div>
+        ${S.rec.buildingTransitions.map((t) =>
+          `<div class="crossing">${t.buildingName} · floor ${t.floor} <span>${t.t.toFixed(0)}s</span></div>`).join("")}` : ""}
       <div class="spacer"></div>
-      <button class="big" id="finish" style="background:var(--red);color:#fff">Finish path</button>`,
+      <button class="big" id="finish" style="background:var(--red);color:#fff">Finish at an entrance</button>`,
     wire: () => {
+      $("#cross").onclick = () => {
+        S.form = { query: "", selectedId: null, floor: S.sim.floor };
+        go("transition");
+      };
       document.querySelectorAll("[data-lm]").forEach((b) => {
         b.onclick = () => {
           S.rec.landmarks.push({ name: b.dataset.lm, x: S.sim.x, z: S.sim.z, floor: S.sim.floor });
           log(`landmark: ${b.dataset.lm}`);
-          syncRail();
+          render();
         };
       });
-      $("#finish").onclick = () => go("finish");
+      $("#finish").onclick = () => { S.sim.gpsAccuracy = 24; go("endGate"); };
+    },
+  }),
+
+  transition: () => ({
+    label: "COLLECTOR · CROSSING",
+    html: `
+      <h2 class="title">New building</h2>
+      ${buildingForm(`Leaving ${buildingName(S.sim.buildingId)} (floor ${S.sim.floor}). Check the signage — which building is this, and what floor does it call this level?`)}
+      <div class="note" style="margin-top:8px">
+        Floors don't line up between buildings — a connector can put you on
+        floor 4 of one and floor 2 of the next. That's why it asks.
+      </div>
+      <button class="big" id="form-go" ${S.form.selectedId ? "" : "disabled"}>Confirm crossing</button>
+      <button class="ghost" id="back">Cancel</button>`,
+    wire: () => {
+      wireBuildingForm((id, floor) => { declareTransition(id, floor); go("live"); });
+      $("#back").onclick = () => go("live");
+    },
+  }),
+
+  endGate: () => ({
+    label: "COLLECTOR · FINISH OUTSIDE",
+    html: `
+      <h2 class="title">Head outside</h2>
+      <div class="sub">Finish at a building entrance so the path gets a second GPS anchor — that's what bounds the drift.</div>
+      ${signalBlock("Still recording. Walk out until the dot turns green.")}
+      <canvas id="map" class="map" data-h="130" data-scale="2.4"></canvas>
+      <div class="spacer"></div>
+      <button class="ghost" id="outside">🚪 Step outside (simulate)</button>
+      <button class="big" id="sig-continue" disabled>I'm at an entrance</button>
+      <button class="ghost" id="back">Keep walking inside</button>`,
+    wire: () => {
+      $("#outside").onclick = () => { S.sim.seekingSignal = true; };
+      $("#sig-continue").onclick = () => {
+        S.form = { query: "", selectedId: S.sim.buildingId, floor: S.sim.floor };
+        go("endEntrance");
+      };
+      $("#back").onclick = () => go("live");
+    },
+  }),
+
+  endEntrance: () => ({
+    label: "COLLECTOR · END ENTRANCE",
+    html: `
+      <h2 class="title">Which entrance?</h2>
+      ${buildingForm("Confirm the building you just walked out of, and the floor that entrance is on.")}
+      <button class="big" id="form-go" ${S.form.selectedId ? "" : "disabled"}>Confirm &amp; finish</button>
+      <button class="ghost" id="back">Back</button>`,
+    wire: () => {
+      wireBuildingForm((id, floor) => {
+        S.sim.buildingId = id; S.sim.floor = floor;
+        go("finish");
+      });
+      $("#back").onclick = () => go("endGate");
     },
   }),
 
   finish: () => {
     const pts = S.rec ? S.rec.points.length : 0;
     const dist = S.rec ? pathLength(S.rec.points) : 0;
+    const crossings = S.rec ? S.rec.buildingTransitions : [];
     return {
-      label: "COLLECTOR · FINISH",
+      label: "COLLECTOR · SAVE",
       html: `
         <h2 class="title">Path complete</h2>
-        <div class="sub">Name it so it's findable later.</div>
         <div class="stats">
           <div class="stat"><b>${pts}</b><span>POINTS</span></div>
-          <div class="stat"><b>${dist.toFixed(0)}m</b><span>DISTANCE</span></div>
-          <div class="stat"><b>${S.rec ? S.rec.landmarks.length : 0}</b><span>LANDMARKS</span></div>
+          <div class="stat"><b>${dist.toFixed(0)}m</b><span>DIST</span></div>
+          <div class="stat"><b>${crossings.length + 1}</b><span>BUILDINGS</span></div>
         </div>
         <label style="font-size:11px;color:var(--sub)">PATH NAME</label>
-        <input id="nm" type="text" placeholder="e.g. Wean 2nd floor loop"
+        <input id="nm" type="text" placeholder="e.g. Wean 4 → Doherty tunnel"
           style="width:100%;font:inherit;padding:11px;border-radius:10px;background:#061020;color:var(--text);border:1px solid var(--line);margin-top:4px"/>
-        <div style="margin-top:14px;border:1px solid var(--line);border-radius:10px;padding:10px 12px">
-          <div class="kv"><span>Start node</span><b>${S.rec?.startNodeId ? (S.nodesById[S.rec.startNodeId]?.name || S.rec.startNodeId) : "—"}</b></div>
-          <div class="kv"><span>North aligned</span><b style="color:var(--green)">✓ calibrated</b></div>
-          <div class="kv"><span>Start GPS</span><b>±${Math.round(S.sim.gpsAccuracy)}m</b></div>
+        <div class="summary" style="margin-top:12px">
+          <div class="kv"><span>Started</span><b>${S.rec ? S.rec.startEntrance.buildingName + " F" + S.rec.startEntrance.floor : "—"}</b></div>
+          ${crossings.map((c) => `<div class="kv"><span>→ crossed</span><b>${c.buildingName} F${c.floor}</b></div>`).join("")}
+          <div class="kv"><span>Ended</span><b>${buildingName(S.sim.buildingId)} F${S.sim.floor}</b></div>
+          <div class="kv"><span>End GPS</span><b style="color:var(--green)">±${S.sim.gpsAccuracy.toFixed(1)}m</b></div>
         </div>
         <div class="spacer"></div>
         <button class="big" id="save">Save &amp; upload</button>
@@ -650,13 +899,18 @@ const screens = {
       <h2 class="title">Recordings</h2>
       <div class="sub">${S.recordings.length} captured this session.</div>
       <div style="flex:1;overflow-y:auto;min-height:0">
-        ${S.recordings.length ? S.recordings.map((w) => `
-          <div class="card" style="cursor:default">
+        ${S.recordings.length ? S.recordings.map((w) => {
+          const p = w.placement || {};
+          return `<div class="card" style="cursor:default">
             <div class="nm">${w.name || w.id}</div>
             <div class="meta">${w.points.length} pts · ${pathLength(w.points).toFixed(0)}m ·
-              ${w.northAligned ? "N-aligned" : "unaligned"} · ${w.startNodeId || "no node"}</div>
-          </div>`).join("")
-          : `<div class="sub">Nothing yet — record a path, or use “simulate full run” in the debug rail.</div>`}
+              ${(w.buildingTransitions?.length || 0) + 1} buildings</div>
+            <div class="meta">${p.residualM != null
+              ? `drift ${p.residualM.toFixed(1)}m ${p.driftCorrected ? "corrected" : "not corrected"}`
+              : "not placed"}${p.northCheckDeg != null ? ` · north off ${p.northCheckDeg.toFixed(0)}°` : ""}</div>
+          </div>`;
+        }).join("")
+          : `<div class="sub">Nothing yet — record a path, or use “simulate a full run” in the debug rail.</div>`}
       </div>
       <button class="ghost" id="back">Back</button>`,
     wire: () => { $("#back").onclick = () => go("start"); },
@@ -670,8 +924,8 @@ const screens = {
       label: "USER · DESTINATION",
       html: `
         <h2 class="title">Where to?</h2>
-        <div class="sub">You're near <b style="color:var(--cyan-dim)">${near[0] ? (near[0].name || near[0].id) : "—"}</b>.</div>
-        <canvas id="map" class="map" data-h="150"></canvas>
+        <div class="sub">Near <b style="color:var(--cyan-dim)">${near[0] ? (near[0].name || near[0].id) : "—"}</b></div>
+        <canvas id="map" class="map" data-h="140" data-scale="3"></canvas>
         <div class="sub" style="margin:10px 0 4px;font-size:10.5px;letter-spacing:0.14em">DESTINATION</div>
         <div style="flex:1;overflow-y:auto;min-height:0">
           ${all.map((n) => `
@@ -690,9 +944,7 @@ const screens = {
           const to = S.nodesById[S.user.destId];
           S.user.startId = from ? from.id : null;
           S.user.result = from && to ? routeGraph(S.graph, from, to) : null;
-          log(S.user.result
-            ? `route ${from.id} → ${to.id}: ${S.user.result.length.toFixed(0)}m`
-            : "no route found");
+          log(S.user.result ? `route: ${S.user.result.length.toFixed(0)}m` : "no route found");
           go("route");
         };
       },
@@ -703,7 +955,7 @@ const screens = {
     const r = S.user.result;
     const to = S.nodesById[S.user.destId];
     const from = S.nodesById[S.user.startId];
-    const floorsOnRoute = r ? [...new Set(r.nodes.map((n) => n.floor))] : [];
+    const floors = r ? [...new Set(r.nodes.map((n) => n.floorKey ?? n.floor))] : [];
     return {
       label: "USER · ROUTE",
       html: `
@@ -711,11 +963,11 @@ const screens = {
         <div class="sub">${from ? `from ${from.name || from.id}` : ""}</div>
         ${r ? `
           <div class="stats">
-            <div class="stat"><b>${r.length.toFixed(0)}m</b><span>DISTANCE</span></div>
+            <div class="stat"><b>${r.length.toFixed(0)}m</b><span>DIST</span></div>
             <div class="stat"><b>${Math.max(1, Math.round(r.length / 1.3 / 60))}min</b><span>WALK</span></div>
-            <div class="stat"><b>${floorsOnRoute.length}</b><span>FLOORS</span></div>
+            <div class="stat"><b>${floors.length}</b><span>LEVELS</span></div>
           </div>
-          <canvas id="map" class="map" data-h="300"></canvas>
+          <canvas id="map" class="map" data-h="280" data-scale="3"></canvas>
           <div class="sub" style="margin:10px 0 4px;font-size:10.5px;letter-spacing:0.14em">STEPS</div>
           <div style="flex:1;overflow-y:auto;min-height:0">
             ${routeSteps(r).map((s, i) => `
@@ -724,25 +976,30 @@ const screens = {
                 <div class="nm">${i + 1}. ${s.text}</div>
               </div>`).join("")}
           </div>`
-        : `<div class="sub" style="color:var(--amber)">No route — the graph has no path between those nodes.
-             They're probably in areas nobody has walked between yet.</div><div class="spacer"></div>`}
+        : `<div class="sub" style="color:var(--amber)">No route — nobody has walked a path connecting those yet.</div><div class="spacer"></div>`}
         <button class="ghost" id="back">Pick another destination</button>`,
       wire: () => { $("#back").onclick = () => { S.user.result = null; go("dest"); }; },
     };
   },
 };
 
-// Collapse the node path into human-ish steps: one per floor change, plus a
-// final leg. Enough to prototype what wayfinding instructions should read like.
 function routeSteps(r) {
   const steps = [];
-  let runDist = 0, curFloor = r.nodes[0].floor;
+  let runDist = 0;
+  let cur = r.nodes[0].floorKey ?? String(r.nodes[0].floor);
   for (let i = 1; i < r.nodes.length; i++) {
     const a = r.nodes[i - 1], b = r.nodes[i];
     runDist += Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
-    if (b.floor !== curFloor) {
-      steps.push({ text: `Follow the corridor, then take the stairs to floor ${b.floor}`, dist: runDist });
-      runDist = 0; curFloor = b.floor;
+    const key = b.floorKey ?? String(b.floor);
+    if (key !== cur) {
+      const sameBuilding = a.buildingId && b.buildingId && a.buildingId === b.buildingId;
+      steps.push({
+        text: sameBuilding
+          ? `Follow the corridor, then go to floor ${b.floor}`
+          : `Follow the corridor into ${buildingName(b.buildingId)} (floor ${b.floor})`,
+        dist: runDist,
+      });
+      runDist = 0; cur = key;
     }
   }
   if (runDist > 0) steps.push({ text: "Continue to your destination", dist: runDist });
@@ -755,20 +1012,28 @@ function go(stage) { S.stage = stage; render(); }
 // debug rail
 // ---------------------------------------------------------------------------
 function railHtml() {
-  const g = S.georef || {};
   const maxEdge = S.graph ? Math.max(0, ...[...S.graph.edges.values()].map((e) => e.weight)) : 0;
+  const g = S.frameGeoref || {};
   return `
     <h3>DATA</h3>
     <div class="kv"><span>source</span><b>${S.source}</b></div>
     <div class="kv"><span>graph nodes / edges</span><b>${S.graph ? S.graph.nodes.size : 0} / ${S.graph ? S.graph.edges.size : 0}</b></div>
     <div class="kv"><span>longest edge</span><b>${maxEdge.toFixed(2)}m</b></div>
-    <div class="kv"><span>frame north offset</span><b>${g.northOffsetDeg != null ? g.northOffsetDeg.toFixed(1) + "°" : "—"}</b></div>
-    <div class="kv"><span>north estimate spread</span><b>${g.northSpreadDeg != null ? "±" + g.northSpreadDeg.toFixed(0) + "°" : "—"}</b></div>
-    <div class="kv"><span>geo anchor</span><b>${g.n ? `${g.n} fix · ±${g.accuracyM.toFixed(1)}m` : "none"}</b></div>
-    ${g.synthetic ? `<div class="warn">⚠ No walk in the database carries a GPS fix — <code>walks</code> has no lat/lon columns, so the phone's fix is dropped on upload. Using a nominal campus origin instead.</div>` : ""}
-    ${g.northSpreadDeg > 25 ? `<div class="warn">⚠ Existing walks disagree about north by ±${g.northSpreadDeg.toFixed(0)}°. That's the guesswork the calibration step removes.</div>` : ""}
+    <div class="kv"><span>legacy north spread</span><b>${g.northSpreadDeg != null ? "±" + g.northSpreadDeg.toFixed(0) + "°" : "—"}</b></div>
+    ${Object.keys(S.floorHeights).length ? `
+      <div class="kv"><span>learned floor heights</span><b></b></div>
+      ${Object.entries(S.floorHeights).map(([id, v]) =>
+        `<div class="kv"><span style="padding-left:8px">${id}</span><b>${v.heightM.toFixed(2)}m ×${v.samples}</b></div>`).join("")}` : ""}
+    ${S.floorLinks.length ? `
+      <div class="kv"><span>cross-building links</span><b></b></div>
+      ${S.floorLinks.slice(0, 6).map((l) =>
+        `<div class="kv"><span style="padding-left:8px">${l.from.buildingId.split("-")[0]} ${l.from.floor}</span><b>→ ${l.to.buildingId.split("-")[0]} ${l.to.floor}</b></div>`).join("")}` : ""}
 
     <h3>SENSORS</h3>
+    <div class="kv"><span>where</span><b id="dbg-where">—</b></div>
+    <div class="kv"><span>altitude</span><b id="dbg-alt">—</b></div>
+    <div class="kv"><span>position (x, z)</span><b id="dbg-pos">—</b></div>
+    <div class="kv"><span>gps reading</span><b id="dbg-gps">—</b></div>
     <label>Compass heading · <b id="dbg-heading">—</b></label>
     <input type="range" id="r-heading" min="0" max="359" value="${Math.round(norm360(S.sim.heading))}"/>
     <div class="grid2">
@@ -776,12 +1041,21 @@ function railHtml() {
       <button id="b-rand-head">Randomize</button>
     </div>
     <label id="lbl-gps">GPS accuracy · ±${Math.round(S.sim.gpsAccuracy)}m</label>
-    <input type="range" id="r-gps" min="2" max="40" value="${Math.round(S.sim.gpsAccuracy)}"/>
-    <div class="kv"><span>position (x, z)</span><b id="dbg-pos">—</b></div>
-    <div class="kv"><span>gps reading</span><b id="dbg-gps">—</b></div>
-    <label>Floor</label>
-    <select id="s-floor">${[0, 1, 2, 3].map((f) =>
-      `<option value="${f}" ${S.sim.floor === f ? "selected" : ""}>Floor ${f}</option>`).join("")}</select>
+    <input type="range" id="r-gps" min="3" max="40" value="${Math.round(S.sim.gpsAccuracy)}"/>
+    <div class="grid2">
+      <button id="b-gps-good">Force good</button>
+      <button id="b-gps-poor">Force poor</button>
+    </div>
+
+    <h3>FLOOR / BUILDING</h3>
+    <div class="grid2">
+      <button id="b-fl-down">▼ floor −1</button>
+      <button id="b-fl-up">▲ floor +1</button>
+    </div>
+    <div class="sub" style="font-size:10.5px;margin-top:6px">
+      Changing floors moves altitude by this building's floor height
+      (${floorHeightOf(S.sim.buildingId).toFixed(2)}m).
+    </div>
 
     <h3>MOVEMENT</h3>
     <button id="b-auto" class="${S.sim.autoWalk ? "on" : ""}">${S.sim.autoWalk ? "◼ Stop auto-walk" : "▶ Simulate walking randomly"}</button>
@@ -791,11 +1065,11 @@ function railHtml() {
       <div class="blank"></div><button id="b-fwd">▲</button><div class="blank"></div>
       <button id="b-left">◀ turn</button><button id="b-back">▼</button><button id="b-right">turn ▶</button>
     </div>
-    <button id="b-teleport">⤓ Teleport to a random node</button>
 
     <h3>SCENARIOS</h3>
-    <button id="b-addpath">＋ Add random path to the graph</button>
     <button id="b-fullrun" class="${S.autoScript ? "on" : ""}">${S.autoScript ? "◼ Stop simulated run" : "▶ Simulate a full collection run"}</button>
+    <button id="b-addpath">＋ Add random path to the graph</button>
+    <button id="b-glitch">⚡ Inject a tracking dropout</button>
     <button id="b-reset">↺ Reset session</button>
 
     <h3>SESSION</h3>
@@ -808,30 +1082,29 @@ function railHtml() {
 function wireRail() {
   const on = (id, ev, fn) => { const el = document.getElementById(id); if (el) el[ev] = fn; };
   on("r-heading", "oninput", (e) => { S.sim.heading = +e.target.value; });
-  on("b-north", "onclick", () => { S.sim.heading = 0; syncRail(); });
-  on("b-rand-head", "onclick", () => { S.sim.heading = Math.random() * 360; syncRail(); });
-  // sliders must NOT syncRail on input — rebuilding the rail mid-drag would
-  // recreate the element under the pointer. Their labels update in redrawLive.
-  on("r-gps", "oninput", (e) => { S.sim.gpsAccuracy = +e.target.value; });
-  on("s-floor", "onchange", (e) => { S.sim.floor = +e.target.value; });
+  on("b-north", "onclick", () => { S.sim.heading = 0; });
+  on("b-rand-head", "onclick", () => { S.sim.heading = Math.random() * 360; });
+  on("r-gps", "oninput", (e) => { S.sim.gpsAccuracy = +e.target.value; S.sim.seekingSignal = false; });
+  on("b-gps-good", "onclick", () => { S.sim.gpsAccuracy = 4; S.sim.seekingSignal = false; });
+  on("b-gps-poor", "onclick", () => { S.sim.gpsAccuracy = 28; S.sim.seekingSignal = false; });
+  on("b-fl-up", "onclick", () => { changeFloor(1); render(); });
+  on("b-fl-down", "onclick", () => { changeFloor(-1); render(); });
   on("r-speed", "oninput", (e) => { S.sim.speed = +e.target.value; });
   on("b-auto", "onclick", () => { S.sim.autoWalk = !S.sim.autoWalk; S.sim.target = null; syncRail(); });
   on("b-fwd", "onclick", () => stepForward(1));
   on("b-back", "onclick", () => stepForward(-1));
   on("b-left", "onclick", () => { S.sim.heading = norm360(S.sim.heading - 15); });
   on("b-right", "onclick", () => { S.sim.heading = norm360(S.sim.heading + 15); });
-  on("b-teleport", "onclick", () => {
-    const list = S.nodesGeo.length ? S.nodesGeo : [];
-    const n = list[Math.floor(Math.random() * list.length)];
-    if (n) { S.sim.x = n.x; S.sim.z = n.z; S.sim.floor = n.floor || 0; S.sim.target = null; log(`teleported to ${n.id}`); }
-    syncRail();
-  });
   on("b-addpath", "onclick", addRandomPath);
+  on("b-glitch", "onclick", () => {
+    S.sim.trackingGlitch = 0.6;
+    S.sim.x += 40; S.sim.z += 12;   // relocalization jump
+    log("tracking dropout + 42m jump injected");
+  });
   on("b-fullrun", "onclick", () => (S.autoScript ? stopFullRun() : startFullRun()));
   on("b-reset", "onclick", () => {
     S.recordings = []; S.rec = null; S.autoScript = null; S.sim.autoWalk = false;
     S.user = { startId: null, destId: null, result: null };
-    S.pick = { selectedId: null, showAll: false };
     log("session reset"); go("start");
   });
 }
@@ -841,15 +1114,13 @@ function syncRail() { railEl.innerHTML = railHtml(); wireRail(); }
 // ---------------------------------------------------------------------------
 // scenarios
 // ---------------------------------------------------------------------------
-// Random-walk the existing graph to synthesize a plausible new path, so the
-// graph can be stress-tested without recording anything by hand.
 function addRandomPath() {
   if (!S.graph || !S.graph.nodes.size) { log("no graph to walk"); return; }
   const keys = [...S.graph.nodes.values()];
   let cur = keys[Math.floor(Math.random() * keys.length)];
   const points = [];
   let t = 0;
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 50; i++) {
     const nbrs = graphNeighbors(cur.key);
     if (!nbrs.length) break;
     const next = nbrs[Math.floor(Math.random() * nbrs.length)];
@@ -861,59 +1132,92 @@ function addRandomPath() {
         x: cur.x + (next.x - cur.x) * f + (Math.random() - 0.5) * 0.15,
         y: cur.y + (next.y - cur.y) * f,
         z: cur.z + (next.z - cur.z) * f + (Math.random() - 0.5) * 0.15,
+        relAltitude: cur.y + (next.y - cur.y) * f,
         tracking: "normal",
       });
     }
     cur = next;
   }
   if (points.length < 2) { log("random path too short"); return; }
-  const walk = {
-    schemaVersion: 4, id: `rand-${Date.now()}`, device: "synthetic",
+  S.walks.push({
+    schemaVersion: 5, id: `rand-${Date.now()}`, device: "synthetic",
     recordedAt: new Date().toISOString(), unit: "meters", up: "y",
-    northAligned: true, startAnchorId: "prototype", points,
-  };
-  S.walks.push(walk);
-  annotateFloors(S.walks);
+    northAligned: true, northOffsetDeg: 0, points,
+  });
   rebuild();
-  log(`added random path · ${points.length} pts · ${pathLength(points).toFixed(0)}m`);
+  log(`added random path · ${points.length} pts`);
   render();
 }
 
-// Drive the whole collector flow hands-free: calibrate north, pick the nearest
-// node, walk for a while, finish and save. The fastest way to see the flow end
-// to end after a UI change.
+// Drive the whole collector flow hands-free, including a mid-walk building
+// crossing — the fastest way to see the flow end to end after a UI change.
 function startFullRun() {
-  let phase = "north", elapsed = 0;
+  let phase = "gps", elapsed = 0;
+  S.sim.gpsAccuracy = 26;
+  S.sim.seekingSignal = true;
   S.sim.heading = Math.random() * 360;
-  go("north");
-  log("simulated run: turning to north…");
+  S.form = { query: "", selectedId: null, floor: 1 };
+  go("gps");
+  log("simulated run: walking outside for signal…");
+
   S.autoScript = (dt) => {
     elapsed += dt;
-    if (phase === "north") {
-      const off = offNorth(S.sim.heading);
-      S.sim.heading = norm360(S.sim.heading - Math.sign(off) * Math.min(Math.abs(off), 90 * dt));
-      if (Math.abs(offNorth(S.sim.heading)) <= NORTH_TOLERANCE_DEG) {
-        S.sim.heading = 0; phase = "pick"; elapsed = 0;
-        go(S.internalMode ? "pickStart" : "live");
-        log("simulated run: north confirmed");
+    if (phase === "gps") {
+      if (gpsQuality() === "good") {
+        phase = "entrance"; elapsed = 0;
+        const fix = simGps();
+        const near = buildingsNear(S.buildings, fix.lat, fix.lon, { limit: 5 });
+        S.form.selectedId = near[0]?.id || S.buildings[0]?.id;
+        S.form.floor = 1 + Math.floor(Math.random() * 3);
+        go("entrance");
       }
-    } else if (phase === "pick") {
+    } else if (phase === "entrance") {
       if (elapsed > 0.8) {
-        const near = nearbyNodes(5);
-        S.pick.selectedId = near.length ? near[Math.floor(Math.random() * near.length)].id : null;
-        beginRecording(S.pick.selectedId);
-        S.sim.autoWalk = true; S.sim.target = null;
-        phase = "walk"; elapsed = 0;
-        go("live");
-        log(`simulated run: starting at ${S.pick.selectedId || "(no node)"}`);
+        S.sim.buildingId = S.form.selectedId;
+        S.sim.floor = S.form.floor;
+        log(`simulated run: entering ${buildingName(S.sim.buildingId)} F${S.sim.floor}`);
+        phase = "north"; elapsed = 0;
+        go("north");
       }
-    } else if (phase === "walk") {
-      if (elapsed > 18) {
+    } else if (phase === "north") {
+      const off = offNorth(S.sim.heading);
+      S.sim.heading = norm360(S.sim.heading - Math.sign(off) * Math.min(Math.abs(off), 110 * dt));
+      if (Math.abs(offNorth(S.sim.heading)) <= NORTH_TOLERANCE_DEG) {
+        S.sim.heading = 0; phase = "ready"; elapsed = 0;
+        go("ready");
+      }
+    } else if (phase === "ready") {
+      if (elapsed > 0.7) {
+        beginRecording();
+        S.sim.autoWalk = true; S.sim.target = null;
+        phase = "walkA"; elapsed = 0;
+        go("live");
+      }
+    } else if (phase === "walkA") {
+      if (elapsed > 9) {
+        // cross into a different nearby building, on an unrelated floor
+        const fix = simGps();
+        const near = buildingsNear(S.buildings, fix.lat, fix.lon, { limit: 6 })
+          .filter((b) => b.id !== S.sim.buildingId);
+        const pick = near[Math.floor(Math.random() * Math.min(3, near.length))];
+        if (pick) declareTransition(pick.id, 1 + Math.floor(Math.random() * 4));
+        phase = "walkB"; elapsed = 0;
+        go("live");
+      }
+    } else if (phase === "walkB") {
+      if (elapsed > 9) {
         S.sim.autoWalk = false;
-        phase = "finish"; elapsed = 0;
+        S.sim.gpsAccuracy = 26; S.sim.seekingSignal = true;
+        phase = "endGate"; elapsed = 0;
+        go("endGate");
+      }
+    } else if (phase === "endGate") {
+      if (gpsQuality() === "good") {
+        S.form = { query: "", selectedId: S.sim.buildingId, floor: S.sim.floor };
+        phase = "save"; elapsed = 0;
         go("finish");
       }
-    } else if (phase === "finish") {
+    } else if (phase === "save") {
       if (elapsed > 1.2) {
         finishRecording(`Simulated run ${S.recordings.length + 1}`);
         S.autoScript = null;
@@ -935,15 +1239,14 @@ function stopFullRun() {
 // render
 // ---------------------------------------------------------------------------
 function render() {
-  const key = S.mode === "user"
-    ? (["dest", "route"].includes(S.stage) ? S.stage : "dest")
-    : (screens[S.stage] ? S.stage : "start");
   if (S.mode === "user" && !["dest", "route"].includes(S.stage)) S.stage = "dest";
-  const scr = screens[key]();
+  if (S.mode === "collector" && ["dest", "route"].includes(S.stage)) S.stage = "start";
+  const scr = (screens[S.stage] || screens.start)();
   $("#stage-label").textContent = scr.label;
   screenEl.innerHTML = scr.html;
   scr.wire?.();
-  $("#src").innerHTML = `<b>${S.walks.length}</b> walks · <b>${S.nodes.length}</b> nodes · <b>${S.graph ? S.graph.nodes.size : 0}</b> graph nodes`;
+  $("#src").innerHTML =
+    `<b>${S.walks.length}</b> walks · <b>${S.buildings.length}</b> buildings · <b>${S.graph ? S.graph.nodes.size : 0}</b> nodes`;
   syncRail();
 }
 
@@ -957,7 +1260,6 @@ document.querySelectorAll(".modes button").forEach((b) => {
   };
 });
 
-// keyboard: arrows drive the sim, matching the dpad
 addEventListener("keydown", (e) => {
   if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
   const map = {

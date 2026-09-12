@@ -25,7 +25,24 @@
 export const FEET_TO_METERS = 0.3048;
 export const DEFAULT_MAX_EDGE_METERS = 8 * FEET_TO_METERS; // 8ft, per project spec
 
-const nodeKey = (floor, gx, gz) => `${floor}:${gx}:${gz}`;
+const nodeKey = (scope, gx, gz) => `${scope}:${gx}:${gz}`;
+
+// What a grid cell is scoped by. `floorKey` ("wean-hall:4") comes from
+// building-floors.js and keeps two buildings' "floor 2" from ever merging into
+// one cell; points without it fall back to the bare floor index, which is the
+// old behavior exactly.
+const scopeOf = (p) => p.floorKey ?? (p.floor || 0);
+
+// A connection is "vertical" (stairs/elevator) if it changes level. Across a
+// building boundary the floor NUMBERS are unrelated — Wean 4 connects to
+// Doherty 2 — so compare altitude there instead of floor labels, or every
+// building transition would be mislabeled as a staircase.
+function isVertical(a, b) {
+  if (a.buildingId && b.buildingId && a.buildingId !== b.buildingId) {
+    return Math.abs(a.y - b.y) > 1.0;
+  }
+  return a.floor !== b.floor;
+}
 
 export function buildGraph(
   walks,
@@ -34,13 +51,18 @@ export function buildGraph(
   const nodes = new Map(); // key -> { key, floor, sx, sy, sz, n, buildingVotes }
 
   const snap = (v) => Math.round(v / cellSize);
-  const keyFor = (p) => nodeKey(p.floor || 0, snap(p.x), snap(p.z));
+  const keyFor = (p) => nodeKey(scopeOf(p), snap(p.x), snap(p.z));
 
   const touchNode = (p, building) => {
     const key = keyFor(p);
     let node = nodes.get(key);
     if (!node) {
-      node = { key, floor: p.floor || 0, sx: 0, sy: 0, sz: 0, n: 0, buildingVotes: new Map() };
+      node = {
+        key, floor: p.floor || 0,
+        floorKey: p.floorKey ?? null,
+        buildingId: p.buildingId ?? null,
+        sx: 0, sy: 0, sz: 0, n: 0, buildingVotes: new Map(),
+      };
       nodes.set(key, node);
     }
     node.sx += p.x;
@@ -96,7 +118,7 @@ export function buildGraph(
   const connect = (nodeA, nodeB) => {
     if (nodeA.key === nodeB.key) return;
     const dist = Math.hypot(nodeA.x - nodeB.x, nodeA.y - nodeB.y, nodeA.z - nodeB.z);
-    const vertical = nodeA.floor !== nodeB.floor;
+    const vertical = isVertical(nodeA, nodeB);
     if (!(maxEdgeMeters > 0) || dist <= maxEdgeMeters) {
       linkAdjacent(nodeA.key, nodeB.key, nodeA, nodeB, vertical);
       return;
@@ -154,6 +176,83 @@ function majorityVote(counts) {
     }
   }
   return best;
+}
+
+// ---------------------------------------------------------------------------
+// Tracking-loss segmentation
+// ---------------------------------------------------------------------------
+// Doorways are where ARKit breaks: walking from a dim interior into sunlight
+// drops tracking to `limited`/`notAvailable`, and on recovery ARKit can jump
+// its origin. The walk then contains a teleport — and because buildGraph
+// subdivides long spans (see `connect`), that teleport would be filled in with
+// a tidy chain of synthetic nodes, fabricating a corridor through space nobody
+// walked. Splitting the walk at the break is the fix: two fragments never get
+// connected, so the gap stays a gap.
+//
+// Detects two things:
+//   - an explicit `tracking` state in `breakStates` (recorded per point)
+//   - an implausible jump: faster than `maxSpeedMps`, which catches a
+//     relocalization jump even when the tracking state looks healthy
+//
+// Fragments after the first are NOT anchored to anything (their frame drifted
+// or jumped), so each carries `placement: "unanchored"` unless it's the last
+// fragment of a walk that ended on a GPS fix. See world-align.js.
+export function splitOnTrackingLoss(walks, {
+  breakStates = ["notAvailable"],
+  maxSpeedMps = 6,
+  minFragmentPoints = 5,
+} = {}) {
+  const bad = new Set(breakStates);
+  const out = [];
+
+  for (const walk of walks || []) {
+    const pts = walk.points || [];
+    const cuts = [];
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i];
+      if (bad.has(b.tracking)) { cuts.push(i); continue; }
+      const dt = (b.t ?? 0) - (a.t ?? 0);
+      const d = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+      if (dt > 1e-6 && d / dt > maxSpeedMps) cuts.push(i);
+    }
+    if (!cuts.length) { out.push(walk); continue; }
+
+    const bounds = [0, ...cuts, pts.length];
+    const decls = walk.buildingTransitions || [];
+    let index = 0;
+    for (let i = 1; i < bounds.length; i++) {
+      const slice = pts.slice(bounds[i - 1], bounds[i]);
+      if (slice.length < minFragmentPoints) continue;
+      const t0 = slice[0].t ?? 0, t1 = slice[slice.length - 1].t ?? 0;
+      const isFirst = bounds[i - 1] === 0;
+      const isLast = bounds[i] === pts.length;
+
+      // Carry the building declaration that was in force when this fragment
+      // began, so per-building floor assignment still works on fragments.
+      let startEntrance = isFirst ? walk.startEntrance : null;
+      if (!startEntrance) {
+        const active = [walk.startEntrance, ...decls]
+          .filter((d) => d && (d.t ?? 0) <= t0)
+          .sort((a, b) => (a.t ?? 0) - (b.t ?? 0))
+          .pop();
+        if (active) startEntrance = { ...active, t: t0, inferred: true };
+      }
+
+      out.push({
+        ...walk,
+        id: `${walk.id}#${index}`,
+        fragmentOf: walk.id,
+        fragmentIndex: index,
+        startEntrance,
+        endEntrance: isLast ? walk.endEntrance : null,
+        buildingTransitions: decls.filter((d) => (d.t ?? 0) > t0 && (d.t ?? 0) <= t1),
+        placement: isFirst ? "start-fix" : isLast ? "end-fix" : "unanchored",
+        points: slice,
+      });
+      index += 1;
+    }
+  }
+  return out;
 }
 
 export function nearestNode(graph, pos) {
@@ -280,6 +379,34 @@ export function runSelfTest() {
     endBuilding: endNode && endNode.building,
     length: r && r.length,
     pass: !!r && startNode?.building === "Building A" && endNode?.building === "Building B",
+  });
+
+  // A tracking dropout mid-walk must break the walk rather than be bridged by
+  // synthetic nodes — otherwise the 8ft subdivision invents a corridor.
+  const jumpy = {
+    id: "w-jump",
+    points: [
+      { t: 0.0, x: 0, y: 0, z: 0, floor: 0, tracking: "normal" },
+      { t: 0.2, x: 1, y: 0, z: 0, floor: 0, tracking: "normal" },
+      { t: 0.4, x: 2, y: 0, z: 0, floor: 0, tracking: "normal" },
+      { t: 0.6, x: 3, y: 0, z: 0, floor: 0, tracking: "normal" },
+      { t: 0.8, x: 4, y: 0, z: 0, floor: 0, tracking: "normal" },
+      { t: 1.0, x: 60, y: 0, z: 0, floor: 0, tracking: "notAvailable" }, // teleport
+      { t: 1.2, x: 61, y: 0, z: 0, floor: 0, tracking: "normal" },
+      { t: 1.4, x: 62, y: 0, z: 0, floor: 0, tracking: "normal" },
+      { t: 1.6, x: 63, y: 0, z: 0, floor: 0, tracking: "normal" },
+      { t: 1.8, x: 64, y: 0, z: 0, floor: 0, tracking: "normal" },
+    ],
+  };
+  const bridged = buildGraph([jumpy], { cellSize: 0.5 });
+  const split = buildGraph(splitOnTrackingLoss([jumpy]), { cellSize: 0.5 });
+  // the fabricated span is ~56m; at the 8ft cap that's ~23 invented nodes
+  results.push({
+    name: "tracking loss splits the walk instead of fabricating a corridor",
+    bridgedNodes: bridged.nodes.size,
+    splitNodes: split.nodes.size,
+    fragments: splitOnTrackingLoss([jumpy]).length,
+    pass: splitOnTrackingLoss([jumpy]).length === 2 && split.nodes.size < bridged.nodes.size,
   });
 
   const pass = results.every((r) => r.pass);

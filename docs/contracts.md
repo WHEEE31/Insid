@@ -155,6 +155,37 @@ the calibration flow:
   roughly the way they faced. On the current five recorded walks this estimate
   disagrees with itself by **±53°**, which is the guesswork calibration removes.
 
+## Buildings + per-building floors  (owner: D)
+
+```js
+// buildings.js — gazetteer (web/data/buildings.json, from OSM via
+// tools/fetch-buildings.mjs) + name resolution. Returns RANKED CANDIDATES:
+// the collector confirms from a short list, so a wrong guess costs a tap.
+loadBuildings(url?): Promise<Building[]>
+resolveBuilding(query, buildings, {lat, lon, limit}): Candidate[]  // + score, distanceM
+buildingsNear(buildings, lat, lon, {limit}): Candidate[]
+
+// building-floors.js — floor ladders re-based per building declaration.
+annotateBuildingFloors(walks, {buildings}): {floorHeights, floorLinks, handled, unhandled}
+learnFloorHeights(walks, {defaultHeight}): {[buildingId]: {heightM, samples}}
+declarationsOf(walk): Declaration[]   // startEntrance + transitions + endEntrance
+
+// world-align.js — entrance anchoring.
+makeCampusFrame(lat0, lon0): Georef                  // ONE frame for all walks
+placeWalkByEntrances(walk, campus, opts): Walk       // + .placed, .placement
+
+// graph.js — split before clustering, or a tracking jump becomes a fake corridor.
+splitOnTrackingLoss(walks, {breakStates, maxSpeedMps}): Walk[]
+```
+
+Proximity never invents a match: it only breaks ties between buildings whose
+names the collector actually typed. Walks with no declarations are returned in
+`unhandled` so the legacy global clusterer in `floors.js` still handles them.
+
+Graph cells are scoped by `floorKey` (`"wean-hall:4"`) when present, falling back
+to the bare floor index — so two buildings' "floor 2" never merge, and pre-v5
+data behaves exactly as before.
+
 ## File ownership (NO cross-writes — prevents collisions)
 
 | Stream | Owns (create/edit) | May IMPORT/READ only |
@@ -162,7 +193,7 @@ the calibration flow:
 | **A** node anchoring | `web/pipeline/node-anchor.js`, `web/data/nodes.json` | contracts, path-schema |
 | **B** database | `supabase/*`, `Insid/Insid/Uploader.swift`, `Insid/Insid/ContentView.swift`, `web/data-loader.js`, `web/config.example.js` | contracts, WalkModel.swift |
 | **C** map overlay | `web/map.html`, `web/map.js`, `web/pipeline/georef.js` | `data-loader.js` (loadWalks/loadNodes), `node-anchor.js`, nodes.json |
-| **D** routing graph | `web/pipeline/graph.js`, `web/pipeline/db-graph.js`, `web/pipeline/world-align.js`, `web/graph-view.*`, `web/prototype.*` | contracts, path-schema, `data-loader.js` (loadWalks/loadNodes), `floors.js` |
+| **D** routing graph | `web/pipeline/{graph,db-graph,world-align,buildings,building-floors}.js`, `web/data/buildings.json`, `tools/fetch-buildings.mjs`, `web/graph-view.*`, `web/prototype.*` | contracts, path-schema, `data-loader.js` (loadWalks/loadNodes), `floors.js` |
 
 Shared, read-only for all: `docs/contracts.md`, `docs/path-schema.md`.
 
