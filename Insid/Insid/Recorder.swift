@@ -19,6 +19,14 @@ struct Recording: Identifiable, Hashable {
     var recordedAt: String?   // ISO8601, if decodable (for sort/display)
 }
 
+// A landmark dropped during a live walk: a named node at an ARKit-local position.
+// Drives the glowing markers in LiveMapView and (later) the walk's saved nodes.
+struct LiveLandmark: Identifiable, Hashable {
+    let id = UUID()
+    let name: String
+    let pos: SIMD3<Float>
+}
+
 final class Recorder: NSObject, ObservableObject, ARSessionDelegate, CLLocationManagerDelegate {
     // live UI state
     @Published var isRecording = false
@@ -27,6 +35,25 @@ final class Recorder: NSObject, ObservableObject, ARSessionDelegate, CLLocationM
     @Published var relAltitude = 0.0
     @Published var startAnchorId = "demo-lobby-x"
     @Published var lastExportURL: URL?
+
+    // MARK: real-time 3D map feed (consumed by LiveMapView)
+    // The path so far, one SIMD3 per ~10 Hz sample (ARKit x/y/z, y = up). Appended
+    // incrementally in session(_:didUpdate:); LiveMapView observes it via Combine.
+    @Published private(set) var livePath: [SIMD3<Float>] = []
+    // Named landmark nodes dropped mid-walk, in the same ARKit-local frame.
+    @Published private(set) var liveLandmarks: [LiveLandmark] = []
+    // Live derived stats for the mapping HUD.
+    @Published private(set) var distance = 0.0   // meters travelled (3D path length)
+    @Published private(set) var elapsed = 0.0    // seconds since record start
+
+    // MARK: v3 node references (set by the Variant C flow before / at finish)
+    @Published var startNodeId: String?
+    @Published var orientNodeId: String?
+    @Published var endNodeId: String?
+
+    // Most recent camera position in the ARKit frame, updated every frame (even
+    // before recording). Used to place "＋ New node here" + landmark drops.
+    private(set) var latestCameraPos: SIMD3<Float>?
 
     // persisted list of every recording (most recent first). Survives launches:
     // populated from disk in init(), appended to on each stopRecording().
@@ -91,6 +118,17 @@ final class Recorder: NSObject, ObservableObject, ARSessionDelegate, CLLocationM
         startHeading = nil
         capturedHeading = false
         startTime = 0
+        lastSample = 0
+
+        // reset the live-map feed + derived stats for this walk
+        livePath = []
+        liveLandmarks = []
+        distance = 0
+        elapsed = 0
+
+        // if the flow picked a start node, mirror it into startAnchorId so walks
+        // that started on the same node still share a frame downstream.
+        if let s = startNodeId, !s.isEmpty { startAnchorId = s }
 
         // barometer is already running (warmed in startSession) — zero it here so
         // each walk's relAltitude starts at 0, and snapshot the reference pressure.
@@ -116,22 +154,48 @@ final class Recorder: NSObject, ObservableObject, ARSessionDelegate, CLLocationM
         isRecording = true
     }
 
+    // Stop sampling but KEEP the buffered walk in memory (no export yet) so the
+    // finish screen can name the end node before we persist. Call saveWalk() to
+    // actually write + list the recording.
     func stopRecording() {
-        guard isRecording, var walk else { return }
+        guard isRecording else { return }
         isRecording = false
         // keep the barometer running (warm) for the next walk
         location.stopUpdatingHeading()
+    }
 
+    // Finalize the buffered walk: fold in start fixes + node refs, then export.
+    // Returns the file URL (also stored in lastExportURL). endNodeId, if given,
+    // overrides whatever was set on the recorder.
+    @discardableResult
+    func saveWalk(endNodeId overrideEnd: String? = nil) -> URL? {
+        guard var walk else { return nil }
         walk.baroReference = baroReference
         walk.startLatLon = startLatLon
         walk.startHeading = startHeading
+        walk.startNodeId = startNodeId
+        walk.orientNodeId = orientNodeId
+        walk.endNodeId = overrideEnd ?? endNodeId
         self.walk = walk
         export(walk)
+        return lastExportURL
+    }
+
+    // Drop a named landmark at the current ARKit position (for the live map + HUD).
+    func dropLandmark(name: String) {
+        let pos = latestCameraPos ?? livePath.last
+        guard let pos else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        liveLandmarks.append(LiveLandmark(name: trimmed.isEmpty ? "landmark" : trimmed, pos: pos))
     }
 
     // MARK: ARSessionDelegate
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        // track the latest camera position every frame (used for node/landmark drops)
+        let cam = frame.camera.transform.columns.3
+        latestCameraPos = SIMD3<Float>(cam.x, cam.y, cam.z)
+
         guard isRecording, walk != nil else {
             // still surface tracking state before recording
             trackingState = Self.describe(frame.camera.trackingState)
@@ -154,6 +218,12 @@ final class Recorder: NSObject, ObservableObject, ARSessionDelegate, CLLocationM
             tracking: state
         ))
         pointCount = walk?.points.count ?? 0
+
+        // feed the real-time 3D map: append the new position + update stats
+        let p = SIMD3<Float>(m.x, m.y, m.z)
+        if let last = livePath.last { distance += Double(simd_distance(last, p)) }
+        livePath.append(p)
+        elapsed = t - startTime
     }
 
     static func describe(_ s: ARCamera.TrackingState) -> String {

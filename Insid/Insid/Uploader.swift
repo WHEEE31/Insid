@@ -56,16 +56,20 @@ final class Uploader {
     // Resolve Supabase config from Info.plist. Returns nil (=> .missingConfig)
     // if either key is absent, blank, or still a "YOUR-..." placeholder.
     private func config() -> (url: String, key: String)? {
-        let info = Bundle.main.infoDictionary
-        guard
-            let rawURL = info?["SUPABASE_URL"] as? String,
-            let key = info?["SUPABASE_ANON_KEY"] as? String,
-            rawURL.hasPrefix("http"),
-            !rawURL.contains("YOUR-"),
-            !key.isEmpty,
-            !key.contains("YOUR-")
+        // Prefer the compiled-in SupabaseConfig; fall back to Info.plist keys.
+        var rawURL = SupabaseConfig.url
+        var key = SupabaseConfig.anonKey
+        if !rawURL.hasPrefix("http") || rawURL.contains("YOUR-") || key.isEmpty || key.contains("YOUR-") {
+            let info = Bundle.main.infoDictionary
+            rawURL = info?["SUPABASE_URL"] as? String ?? ""
+            key = info?["SUPABASE_ANON_KEY"] as? String ?? ""
+        }
+        guard rawURL.hasPrefix("http"), !rawURL.contains("YOUR-"), !key.isEmpty, !key.contains("YOUR-")
         else { return nil }
-        let url = rawURL.hasSuffix("/") ? String(rawURL.dropLast()) : rawURL
+        // normalize to the BASE project URL (tolerate a stray /rest/v1 or trailing /)
+        var url = rawURL
+        while url.hasSuffix("/") { url = String(url.dropLast()) }
+        if url.hasSuffix("/rest/v1") { url = String(url.dropLast("/rest/v1".count)) }
         return (url, key)
     }
 
@@ -82,16 +86,15 @@ final class Uploader {
             return done(.failure(.missingConfig))
         }
 
-        // Note: WalkModel (v2) has no node refs yet; send them as null so the
-        // v3 columns exist-and-are-empty. When WalkModel gains startNodeId etc.,
-        // wire them through here.
+        // v3: WalkModel now carries node refs — pass them straight through to the
+        // matching walks columns (null when the walk was recorded without them).
         let row = WalkRow(
             id: walk.id,
             recorded_at: walk.recordedAt,
             device: walk.device,
-            start_node_id: nil,
-            orient_node_id: nil,
-            end_node_id: nil,
+            start_node_id: walk.startNodeId,
+            orient_node_id: walk.orientNodeId,
+            end_node_id: walk.endNodeId,
             baro_reference: walk.baroReference,
             points: walk.points
         )

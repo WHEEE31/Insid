@@ -82,6 +82,76 @@
       #hud .wrow.off { opacity: 0.4; }
       #hud .wrow input { margin: 0; cursor: pointer; accent-color: #3fd0ff; }
       #hud .wrow i { width: 8px; height: 8px; display: inline-block; }
+
+      /* edit-mode controls (need clicks) */
+      #hud .editctl {
+        margin-top: 10px; padding-top: 9px;
+        border-top: 1px solid rgba(63,208,255,0.18);
+        pointer-events: auto;
+      }
+      #hud .editctl .ebtns { display: flex; gap: 6px; margin-top: 6px; }
+      #hud .ebtn {
+        font: 10.5px/1.3 ui-monospace, "SF Mono", Menlo, monospace;
+        letter-spacing: 0.08em; text-transform: uppercase;
+        color: #9cc4dc; background: rgba(34,211,238,0.06);
+        border: 1px solid rgba(63,208,255,0.35); border-radius: 2px;
+        padding: 6px 10px; cursor: pointer; width: 100%;
+      }
+      #hud .ebtn.small { padding: 5px 6px; flex: 1; }
+      #hud .ebtn:hover:not(:disabled) {
+        background: rgba(34,211,238,0.14); color: #d6f6ff;
+        border-color: rgba(111,240,255,0.7);
+      }
+      #hud .ebtn:disabled { opacity: 0.35; cursor: not-allowed; }
+      #hud .ebtn.on {
+        background: rgba(111,240,255,0.22); color: #eafdff;
+        border-color: #6ff0ff; box-shadow: 0 0 10px rgba(111,240,255,0.35);
+      }
+      #hud .estatus {
+        margin-top: 6px; min-height: 12px; color: #6ff0ff;
+        font-size: 9.5px; letter-spacing: 0.04em; word-break: break-word;
+      }
+
+      /* in-scene naming overlay */
+      #edit-overlay {
+        position: fixed; z-index: 20; display: none;
+        width: 236px;
+        font: 11.5px/1.5 ui-monospace, "SF Mono", Menlo, monospace;
+        color: #9cc4dc;
+        padding: 12px; border-radius: 2px;
+        background: rgba(4,10,20,0.92);
+        border: 1px solid rgba(63,208,255,0.55);
+        box-shadow: 0 0 24px rgba(0,0,0,0.6), inset 0 0 18px rgba(34,211,238,0.06);
+      }
+      #edit-overlay .eo-head {
+        color: #5f89a3; font-size: 9.5px; letter-spacing: 0.08em;
+        text-transform: uppercase; margin-bottom: 8px;
+      }
+      #edit-overlay input#eo-name {
+        width: 100%; box-sizing: border-box;
+        background: rgba(0,0,0,0.4); color: #eafdff;
+        border: 1px solid rgba(63,208,255,0.4); border-radius: 2px;
+        padding: 6px 8px; font: inherit; outline: none;
+      }
+      #edit-overlay input#eo-name:focus { border-color: #6ff0ff; }
+      #edit-overlay .eo-id {
+        margin: 7px 0; color: #5f89a3; font-size: 10px; letter-spacing: 0.04em;
+      }
+      #edit-overlay .eo-id span { color: #6ff0ff; }
+      #edit-overlay .eo-actions { display: flex; gap: 6px; }
+      #edit-overlay button {
+        font: 10.5px/1.3 ui-monospace, "SF Mono", Menlo, monospace;
+        letter-spacing: 0.08em; text-transform: uppercase;
+        color: #9cc4dc; background: rgba(34,211,238,0.06);
+        border: 1px solid rgba(63,208,255,0.35); border-radius: 2px;
+        padding: 6px 10px; cursor: pointer;
+      }
+      #edit-overlay button:hover {
+        background: rgba(34,211,238,0.16); color: #d6f6ff;
+        border-color: rgba(111,240,255,0.7);
+      }
+      #edit-overlay button#eo-save { flex: 1; color: #eafdff; border-color: #6ff0ff; }
+      #edit-overlay button#eo-cancel { padding: 6px 9px; }
     </style>
     <script type="importmap">
       {
@@ -94,6 +164,16 @@
   </head>
   <body>
     <div id="hud">loading…</div>
+    <div id="edit-overlay">
+      <div class="eo-head" id="eo-head"></div>
+      <input id="eo-name" type="text" placeholder="node name" autocomplete="off" spellcheck="false" />
+      <div class="eo-id">id: <span id="eo-id">—</span></div>
+      <div class="eo-actions">
+        <button id="eo-save">Save</button>
+        <button id="eo-clear">Clear</button>
+        <button id="eo-cancel">✕</button>
+      </div>
+    </div>
     <script type="module" src="./main.js"></script>
   </body>
 </html>

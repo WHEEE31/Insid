@@ -4,7 +4,7 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
-import { loadWalks } from "./data-loader.js";
+import { loadWalks, loadNodes } from "./data-loader.js";
 import { annotateFloors } from "./pipeline/floors.js";
 import { buildGraph, route } from "./pipeline/graph.js";
 import {
@@ -18,6 +18,13 @@ import {
 const walks = await loadWalks();
 const floors = annotateFloors(walks);
 const graph = buildGraph(walks);
+
+// stable, ordered view of the merged graph nodes. The graph-node Points cloud
+// (built in addWalks) uses THIS order, so a raycast hit .index maps back here.
+// Each entry may gain a `.namedId` when a registry node is attached to it.
+const graphNodeList = [...graph.nodes.values()];
+const graphNodeByKey = new Map(graphNodeList.map((n) => [n.key, n]));
+let graphPoints = null; // THREE.Points of the merged graph nodes (set in addWalks)
 
 // ---- near-monochrome holographic palette -----------------------------------
 // Whole scene reads as ONE blue hologram; floors graduate deep-blue -> cyan so
@@ -57,6 +64,12 @@ const camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.1, 50
 // from the raw walks, since it's computed from all walks combined, not one walk.
 const graphGroup = new THREE.Group();
 scene.add(graphGroup);
+
+// named-node overlay (bright dot + HUD label sprite per named registry node).
+// Kept separate from graphGroup so labels stay legible even if the raw graph
+// dots are toggled off.
+const namedGroup = new THREE.Group();
+scene.add(namedGroup);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -215,9 +228,11 @@ function addWalks() {
     walkObjects.push({ id: w.id, group });
   });
 
-  // brighter dots at merged graph nodes (the actual "mesh" vertices)
+  // brighter dots at merged graph nodes (the actual "mesh" vertices).
+  // Iterate graphNodeList (NOT graph.nodes) so buffer index === graphNodeList
+  // index, which the edit-mode raycaster relies on to map a hit back to a node.
   const npos = [], ncol = [];
-  for (const n of graph.nodes.values()) {
+  for (const n of graphNodeList) {
     npos.push(n.x, n.y, n.z);
     const c = floorColor(n.floor).lerp(BLUE_BRIGHT, 0.4);
     ncol.push(c.r, c.g, c.b);
@@ -225,11 +240,12 @@ function addWalks() {
   const ngeo = new THREE.BufferGeometry();
   ngeo.setAttribute("position", new THREE.Float32BufferAttribute(npos, 3));
   ngeo.setAttribute("color", new THREE.Float32BufferAttribute(ncol, 3));
-  graphGroup.add(new THREE.Points(ngeo, new THREE.PointsMaterial({
+  graphPoints = new THREE.Points(ngeo, new THREE.PointsMaterial({
     map: dotTexture(), size: 0.75, sizeAttenuation: true,
     vertexColors: true, transparent: true, depthWrite: false,
     blending: THREE.AdditiveBlending,
-  })));
+  }));
+  graphGroup.add(graphPoints);
 }
 
 // ---- vertical connectors: thin bright lines + tick crossbars ----------------
@@ -477,6 +493,353 @@ const bloom = new UnrealBloomPass(
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
+// ============================================================================
+// EDIT MODE — click-to-name graph nodes, in-scene naming overlay, persistence.
+// ============================================================================
+// registry: id -> { id, name, floor, x, y, z, lat, lon, nodeKey }
+const namedById = new Map();
+const markerById = new Map(); // id -> THREE.Group (bright dot + label sprite)
+const LS_KEY = "vis-node-registry-v1";
+// Raycast tolerance in WORLD meters around each dot. Graph cells are ~1.5m
+// apart (buildGraph cellSize); 2.0m is forgiving to click yet we always pick
+// the dot whose distance-to-ray is smallest, so overlap never mis-selects.
+const NODE_PICK_THRESHOLD = 2.0;
+const MATCH_DIST = 1.0;   // snap already-named nodes onto a graph node if <1m
+const DRAG_SLOP_PX = 5;   // pointer travel above this = orbit drag, not a click
+
+let editMode = false;
+let selectedNode = null;  // graph node currently targeted by the overlay
+let supabaseCfg = null;   // resolved once at init
+
+// ---- id slug (same rules as the old standalone node-editor) ----
+function slugify(name) {
+  const s = String(name).toLowerCase().trim()
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return s || "node";
+}
+function uniqueId(name, excludeId) {
+  const base = slugify(name);
+  let id = base, n = 2;
+  const taken = (cand) => {
+    for (const key of namedById.keys()) {
+      if (key === excludeId) continue;
+      if (key === cand) return true;
+    }
+    return false;
+  };
+  while (taken(id)) id = `${base}-${n++}`;
+  return id;
+}
+
+// ---- registry helpers ----
+function normRec(n) {
+  return {
+    id: String(n.id),
+    name: n.name != null ? String(n.name) : String(n.id),
+    floor: Number.isFinite(n.floor) ? n.floor : 0,
+    x: +n.x || 0, y: +n.y || 0, z: +n.z || 0,
+    lat: n.lat == null ? null : +n.lat,
+    lon: n.lon == null ? null : +n.lon,
+    nodeKey: n.nodeKey != null ? String(n.nodeKey) : null,
+  };
+}
+function exportNodes() {
+  return [...namedById.values()].map((n) => ({
+    id: n.id, name: n.name, floor: n.floor,
+    x: n.x, y: n.y, z: n.z, lat: n.lat ?? null, lon: n.lon ?? null,
+  }));
+}
+function saveLocal() {
+  try { localStorage.setItem(LS_KEY, JSON.stringify([...namedById.values()])); }
+  catch (e) { /* quota / private mode — non-fatal */ }
+}
+function loadLocal() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    const arr = raw ? JSON.parse(raw) : null;
+    return Array.isArray(arr) ? arr : null;
+  } catch (e) { return null; }
+}
+
+function nearestGraphNode(x, y, z, maxDist) {
+  let best = null, bestD = maxDist * maxDist;
+  for (const gn of graphNodeList) {
+    const dx = gn.x - x, dy = gn.y - y, dz = gn.z - z;
+    const d = dx * dx + dy * dy + dz * dz;
+    if (d <= bestD) { bestD = d; best = gn; }
+  }
+  return best;
+}
+
+// ---- markers (bright dot + label sprite) ----
+function disposeGroup(g) {
+  g.traverse((o) => {
+    if (o.geometry) o.geometry.dispose();
+    if (o.material) {
+      if (o.material.map) o.material.map.dispose();
+      o.material.dispose();
+    }
+  });
+}
+function removeMarker(id) {
+  const g = markerById.get(id);
+  if (!g) return;
+  namedGroup.remove(g);
+  disposeGroup(g);
+  markerById.delete(id);
+}
+function renderMarker(rec) {
+  removeMarker(rec.id);
+  const g = new THREE.Group();
+  g.position.set(rec.x, rec.y, rec.z);
+  g.add(new THREE.Mesh(
+    new THREE.SphereGeometry(0.42, 16, 16),
+    new THREE.MeshBasicMaterial({
+      color: ROUTE_COLOR, transparent: true, opacity: 0.95,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    })
+  ));
+  const label = makeLabelSprite(rec.name, `#${hexOf(BLUE_BRIGHT)}`);
+  label.scale.multiplyScalar(0.7);
+  label.position.set(0, 1.5, 0);
+  g.add(label);
+  namedGroup.add(g);
+  markerById.set(rec.id, g);
+}
+
+// attach a registry record to its graph node (by stored key, else nearest),
+// snap its coords to the graph-node centroid, and render its marker.
+function attachRecord(rec) {
+  let gn = rec.nodeKey ? graphNodeByKey.get(rec.nodeKey) : null;
+  if (!gn) gn = nearestGraphNode(rec.x, rec.y, rec.z, MATCH_DIST);
+  if (gn) {
+    rec.nodeKey = gn.key;
+    rec.floor = gn.floor; rec.x = gn.x; rec.y = gn.y; rec.z = gn.z;
+    gn.namedId = rec.id;
+    renderMarker(rec);
+  }
+  namedById.set(rec.id, rec);
+}
+
+// ---- selection ring (thin highlight around the targeted node) ----
+const selectionRing = new THREE.Mesh(
+  new THREE.TorusGeometry(0.85, 0.05, 8, 40),
+  new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 })
+);
+selectionRing.rotation.x = -Math.PI / 2;
+selectionRing.visible = false;
+scene.add(selectionRing);
+
+// ---- naming overlay (HTML, positioned near the cursor) ----
+const overlay = document.getElementById("edit-overlay");
+const eoHead = document.getElementById("eo-head");
+const eoName = document.getElementById("eo-name");
+const eoIdPreview = document.getElementById("eo-id");
+const eoSave = document.getElementById("eo-save");
+const eoClear = document.getElementById("eo-clear");
+const eoCancel = document.getElementById("eo-cancel");
+
+function updateIdPreview() {
+  if (!selectedNode) return;
+  const name = eoName.value.trim();
+  const exclude = selectedNode.namedId || null;
+  eoIdPreview.textContent = name ? uniqueId(name, exclude) : "—";
+}
+function positionOverlay(px, py) {
+  const w = overlay.offsetWidth || 240;
+  const h = overlay.offsetHeight || 130;
+  let left = px + 14, top = py + 14;
+  left = Math.max(10, Math.min(left, innerWidth - w - 10));
+  top = Math.max(10, Math.min(top, innerHeight - h - 10));
+  overlay.style.left = left + "px";
+  overlay.style.top = top + "px";
+}
+function openOverlay(gn, px, py) {
+  selectedNode = gn;
+  const rec = gn.namedId ? namedById.get(gn.namedId) : null;
+  eoHead.textContent =
+    `floor ${gn.floor} · x ${gn.x.toFixed(1)} z ${gn.z.toFixed(1)}` +
+    (rec ? "" : " · new");
+  eoName.value = rec ? rec.name : "";
+  eoClear.style.display = rec ? "" : "none";
+  updateIdPreview();
+  overlay.style.display = "block";
+  positionOverlay(px, py);
+  selectionRing.position.set(gn.x, gn.y, gn.z);
+  selectionRing.visible = true;
+  eoName.focus(); eoName.select();
+}
+function closeOverlay() {
+  overlay.style.display = "none";
+  selectionRing.visible = false;
+  selectedNode = null;
+}
+
+function afterRegistryChange() {
+  saveLocal();
+  updateNamedCount();
+}
+function saveOverlay() {
+  if (!selectedNode) return;
+  const name = eoName.value.trim();
+  if (!name) { eoName.focus(); return; }
+  const gn = selectedNode;
+  let rec;
+  if (gn.namedId && namedById.has(gn.namedId)) {
+    rec = namedById.get(gn.namedId);
+    const newId = uniqueId(name, rec.id);
+    if (newId !== rec.id) {
+      namedById.delete(rec.id);
+      removeMarker(rec.id);
+      rec.id = newId;
+      namedById.set(newId, rec);
+      gn.namedId = newId;
+    }
+    rec.name = name;
+  } else {
+    const id = uniqueId(name, null);
+    rec = normRec({ id, name, floor: gn.floor, x: gn.x, y: gn.y, z: gn.z, nodeKey: gn.key });
+    namedById.set(id, rec);
+    gn.namedId = id;
+  }
+  renderMarker(rec);
+  afterRegistryChange();
+  closeOverlay();
+  if (supabaseCfg) upsertNodes([exportOne(rec)]); // fire-and-forget per-save upsert
+}
+function clearOverlay() {
+  if (!selectedNode || !selectedNode.namedId) return;
+  const id = selectedNode.namedId;
+  namedById.delete(id);
+  removeMarker(id);
+  selectedNode.namedId = null;
+  afterRegistryChange();
+  closeOverlay();
+}
+const exportOne = (n) => ({
+  id: n.id, name: n.name, floor: n.floor,
+  x: n.x, y: n.y, z: n.z, lat: n.lat ?? null, lon: n.lon ?? null,
+});
+
+// ---- raycast pick against the graph-node Points cloud ----
+const raycaster = new THREE.Raycaster();
+raycaster.params.Points.threshold = NODE_PICK_THRESHOLD;
+const ndc = new THREE.Vector2();
+function pickNode(clientX, clientY) {
+  if (!graphPoints) return null;
+  const rect = renderer.domElement.getBoundingClientRect();
+  ndc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+  ndc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(ndc, camera);
+  const hits = raycaster.intersectObject(graphPoints, false);
+  if (!hits.length) return null;
+  // intersectObject sorts by distance-along-ray; we want the dot the click is
+  // closest to on screen, so re-sort by perpendicular distance-to-ray.
+  hits.sort((a, b) => a.distanceToRay - b.distanceToRay);
+  return graphNodeList[hits[0].index] || null;
+}
+
+// pointer: distinguish a click (name a node) from an orbit drag.
+let downX = 0, downY = 0, downBtn = 0;
+renderer.domElement.addEventListener("pointerdown", (e) => {
+  downX = e.clientX; downY = e.clientY; downBtn = e.button;
+});
+renderer.domElement.addEventListener("pointerup", (e) => {
+  if (!editMode || downBtn !== 0 || e.button !== 0) return;
+  if (Math.hypot(e.clientX - downX, e.clientY - downY) > DRAG_SLOP_PX) return; // drag
+  const gn = pickNode(e.clientX, e.clientY);
+  if (gn) openOverlay(gn, e.clientX, e.clientY);
+  else closeOverlay();
+});
+
+function setEditMode(on) {
+  editMode = on;
+  controls.autoRotate = !on;               // stop the spin while aiming
+  renderer.domElement.style.cursor = on ? "crosshair" : "";
+  const btn = document.getElementById("editToggle");
+  if (btn) btn.classList.toggle("on", on);
+  if (!on) closeOverlay();
+}
+
+function updateNamedCount() {
+  const el = document.getElementById("namedCount");
+  if (el) el.textContent = namedById.size;
+}
+function setNodeStatus(msg, warn) {
+  const el = document.getElementById("nodeStatus");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.style.color = warn ? "#ff6b6b" : "#6ff0ff";
+}
+
+// ---- persistence: Supabase upsert + nodes.json download ----
+async function getConfig() {
+  try {
+    const m = await import("./config.js");
+    const url = m.SUPABASE_URL, key = m.SUPABASE_ANON_KEY;
+    if (typeof url === "string" && url.startsWith("http") && !url.includes("YOUR-") &&
+        typeof key === "string" && key.length > 0 && !key.includes("YOUR-")) {
+      // normalize to the BASE project URL (tolerate a stray /rest/v1 or trailing /)
+      return { url: url.replace(/\/+$/, "").replace(/\/rest\/v1$/, ""), key };
+    }
+  } catch (e) { /* no config.js -> not configured */ }
+  return null;
+}
+const NODES_ENDPOINT = (cfg) => `${cfg.url}/rest/v1/nodes`;
+async function upsertNodes(rows) {
+  if (!supabaseCfg || !rows.length) return;
+  setNodeStatus(`Saving ${rows.length} node(s)…`);
+  try {
+    const res = await fetch(NODES_ENDPOINT(supabaseCfg), {
+      method: "POST",
+      headers: {
+        apikey: supabaseCfg.key,
+        Authorization: `Bearer ${supabaseCfg.key}`,
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=minimal",
+      },
+      body: JSON.stringify(rows),
+    });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText} ${await res.text().catch(() => "")}`.trim());
+    setNodeStatus(`✓ Saved ${rows.length} node(s) to Supabase.`);
+  } catch (e) {
+    setNodeStatus(`Supabase save failed: ${e.message}`, true);
+    console.error(e);
+  }
+}
+function downloadNodesJson() {
+  const doc = {
+    frame: "building-local", unit: "meters", up: "y",
+    nodes: exportNodes(),
+  };
+  const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "nodes.json";
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  setNodeStatus(`Downloaded nodes.json (${doc.nodes.length} node(s)).`);
+}
+
+// wire the naming overlay controls
+if (overlay) {
+  eoSave.onclick = saveOverlay;
+  eoClear.onclick = clearOverlay;
+  eoCancel.onclick = closeOverlay;
+  eoName.addEventListener("input", updateIdPreview);
+  eoName.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); saveOverlay(); }
+    if (e.key === "Escape") { e.preventDefault(); closeOverlay(); }
+  });
+}
+
+// ---- init named nodes: existing registry, then in-progress local working set
+supabaseCfg = await getConfig();
+let seedRecords = (await loadNodes().catch(() => [])).map(normRec);
+const localSet = loadLocal();
+if (localSet) seedRecords = localSet.map(normRec);
+for (const rec of seedRecords) attachRecord(rec);
+
 // ---- HUD (instrument readout) ----
 const hud = document.getElementById("hud");
 if (hud) {
@@ -490,6 +853,7 @@ if (hud) {
       `<span class="k">WALKS</span><span class="v">${walks.length}</span>` +
       `<span class="k">FLOORS</span><span class="v">${floors.levels.length}</span>` +
       `<span class="k">NODES</span><span class="v">${graph.nodes.size}</span>` +
+      `<span class="k">NAMED</span><span class="v" id="namedCount">${namedById.size}</span>` +
     `</div>` +
     `<div class="route">` +
       `<span class="rlabel">ROUTE</span><b>${routeLen}</b>` +
@@ -508,7 +872,15 @@ if (hud) {
       ).join("") +
       `<label class="wrow"><input type="checkbox" data-graph checked>graph nodes / stairs</label>` +
     `</div>` +
-    `<div class="hint">DRAG ORBIT · SCROLL ZOOM</div>`;
+    `<div class="editctl">` +
+      `<button id="editToggle" class="ebtn">✎ Edit nodes</button>` +
+      `<div class="ebtns">` +
+        `<button id="btnDownload" class="ebtn small">⬇ nodes.json</button>` +
+        `<button id="btnSupabase" class="ebtn small">☁ Save nodes</button>` +
+      `</div>` +
+      `<div id="nodeStatus" class="estatus"></div>` +
+    `</div>` +
+    `<div class="hint">DRAG ORBIT · SCROLL ZOOM · EDIT = CLICK A DOT TO NAME</div>`;
 
   // wire per-walk visibility toggles
   hud.querySelectorAll("input[data-w]").forEach((cb) => {
@@ -524,6 +896,22 @@ if (hud) {
     graphGroup.visible = gcb.checked;
     gcb.closest(".wrow").classList.toggle("off", !gcb.checked);
   };
+
+  // edit-mode toggle + persistence buttons
+  const editBtn = document.getElementById("editToggle");
+  if (editBtn) editBtn.onclick = () => setEditMode(!editMode);
+  const dlBtn = document.getElementById("btnDownload");
+  if (dlBtn) dlBtn.onclick = downloadNodesJson;
+  const sbBtn = document.getElementById("btnSupabase");
+  if (sbBtn) {
+    if (supabaseCfg) {
+      sbBtn.onclick = () => upsertNodes(exportNodes());
+      sbBtn.title = `upsert into ${NODES_ENDPOINT(supabaseCfg)}`;
+    } else {
+      sbBtn.disabled = true;
+      sbBtn.title = "configure web/config.js first";
+    }
+  }
 }
 
 // ---- loop ----
