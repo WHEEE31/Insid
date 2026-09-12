@@ -73,6 +73,195 @@ localToLatLon(x: number, z: number, g: Georef): { lat, lon }
    points jsonb, created_at timestamptz default now())`
 - Hackathon RLS: anon insert on `walks`, anon select on both. Document in supabase/README.md.
 - Web reads via anon key in `web/config.js` (gitignored); provide `web/config.example.js`.
+- **TODO(schema, owner B):** neither table has a `building` column yet. Once one
+  exists (e.g. `walks.building text`, `nodes.building text`), plumb it through
+  `rowToWalk`/`loadNodes` in `data-loader.js` so `graph.js`/`db-graph.js` (owner
+  D, below) pick it up automatically — they already carry a `.building` field
+  through if present and need no other change.
+- **BUG(schema, owner B): the `walks` table drops the phone's GPS and compass.**
+  `docs/path-schema.md` defines `startLatLon` and `startHeading`, the recorder
+  captures both (they're present in `web/data/walk-*.json`), but `walks` has no
+  columns for them — so every uploaded row loses them. Verified: all four rows
+  in Supabase come back with `startLatLon: undefined`. This blocks anything
+  location-aware, including the location-scoped start-node picker and
+  `world-align.js`'s `estimateFrameGeoref`. Fix is additive:
+  `alter table public.walks add column if not exists start_lat double precision,
+  add column if not exists start_lon double precision,
+  add column if not exists gps_accuracy double precision,
+  add column if not exists start_heading double precision,
+  add column if not exists heading_accuracy double precision,
+  add column if not exists north_aligned boolean;`
+  plus the matching fields in `Uploader.swift` and `rowToWalk` in `data-loader.js`.
+
+## Routing graph — `web/pipeline/graph.js`, `web/pipeline/db-graph.js`  (owner: D)
+
+Builds the graph a shortest-path query runs over, straight from whatever
+`data-loader.js` returns (Supabase or its fallback) — no separate "database
+schema" beyond `nodes`/`walks` above.
+
+```js
+// graph.js — pure, walks-in graph-out. cellSize = grid-cell size (m) for
+// merging nearby points into one node. maxEdgeMeters = hard cap on any single
+// edge's length (m); default DEFAULT_MAX_EDGE_METERS = 8ft. Longer spans (e.g.
+// a stairwell run) are subdivided with synthetic in-between nodes rather than
+// left as one long edge, so the 8ft constraint always holds on the output.
+buildGraph(walks: Walk[], opts?: {cellSize?, maxEdgeMeters?}): Graph
+nearestNode(graph: Graph, pos: {x,y,z}): Node
+route(graph: Graph, startPos: {x,y,z}, endPos: {x,y,z}): {nodes, edges, length} | null
+
+// db-graph.js — composes loadWalks/loadNodes + floors + graph, and adds
+// registry-node-id routing (vs. raw positions) for cross-building queries.
+loadGraphFromDatabase(opts?: {cellSize?, maxEdgeMeters?}): Promise<{graph, nodes, nodesById}>
+routeBetweenNodeIds(graph, nodesById, startNodeId, endNodeId): RouteResult | null
+summarizeRouteBuildings(routeResult): {building, count}[]
+```
+
+**Multi-building routing has no special case.** A `Graph` node/edge doesn't
+know or care which building it's in — `building` is majority-vote display
+metadata carried from whichever walks touched that grid cell (null until the
+DB has a `building` column; see TODO above). Building A connects to building B
+in the graph *only if* some recorded walk's points physically span both (e.g.
+a tunnel/skyway) — same Dijkstra as any other route, not a separate algorithm.
+This mirrors the "record raw, align later" principle in `docs/path-schema.md`:
+if two buildings' walks were recorded as separate ARKit sessions with no
+shared frame, they won't connect here until something (future anchoring/
+georeferencing work) puts their points in one frame — that's out of scope for
+this module, which only clusters whatever frame the input walks are already in.
+
+## World alignment — `web/pipeline/world-align.js`  (owner: D)
+
+Relates the local (ARKit/graph) frame to the real world: which way is north,
+and where on Earth the frame's origin sits. Needed so a collector can be shown
+"the 5 nodes near you" instead of all 60+, and so walks from different sessions
+can be overlaid without a per-walk rotation fit.
+
+```js
+// -z = north and +x = east after alignment. northOffsetDeg is the true bearing
+// the RAW frame's -z axis points toward.
+alignWalkToNorth(walk, opts?: {northOffsetDeg}): Walk   // sets northAligned
+estimateFrameNorth(walks): {northOffsetDeg, n, spreadDeg} | null
+estimateFrameGeoref(walks, opts?): Georef | null        // from walks' startLatLon
+localToLatLon(x, z, g) / latLonToLocal(lat, lon, g)
+nodesWithLatLon(nodes, g): Node[]                       // tags derived ones geoDerived
+nearestNodesToLatLon(nodes, lat, lon, {k, floor}): Node[]  // + distanceM, nearest first
+```
+
+Two ways a frame's north offset is known, and the difference is the point of
+the calibration flow:
+- **Calibrated** — the collector physically faces north before walking, so the
+  frame is north-aligned by construction (`northAligned: true`, nothing to fit).
+- **Estimated (legacy)** — compare the recorded compass heading at start against
+  the bearing of the walk's first few meters, assuming the collector walked
+  roughly the way they faced. On the current five recorded walks this estimate
+  disagrees with itself by **±53°**, which is the guesswork calibration removes.
+
+## Buildings + per-building floors  (owner: D)
+
+```js
+// buildings.js — gazetteer (web/data/buildings.json, from OSM via
+// tools/fetch-buildings.mjs) + name resolution. Returns RANKED CANDIDATES:
+// the collector confirms from a short list, so a wrong guess costs a tap.
+loadBuildings(url?): Promise<Building[]>
+resolveBuilding(query, buildings, {lat, lon, limit}): Candidate[]  // + score, distanceM
+buildingsNear(buildings, lat, lon, {limit}): Candidate[]
+
+// building-floors.js — floor ladders re-based per building declaration.
+annotateBuildingFloors(walks, {buildings}): {floorHeights, floorLinks, handled, unhandled}
+learnFloorHeights(walks, {defaultHeight}): {[buildingId]: {heightM, samples}}
+declarationsOf(walk): Declaration[]   // startEntrance + transitions + endEntrance
+
+// world-align.js — entrance anchoring.
+makeCampusFrame(lat0, lon0): Georef                  // ONE frame for all walks
+placeWalkByEntrances(walk, campus, opts): Walk       // + .placed, .placement
+// .placement.anchorEnd is "endEntrance" | "gpsFix" | "none". The exit fix is
+// encouraged, not required; without one it closes on the last good mid-walk
+// gpsFixes entry, correcting drift up to that moment and holding flat after
+// (never extrapolating past what's actually known).
+
+// graph.js — split before clustering, or a tracking jump becomes a fake corridor.
+splitOnTrackingLoss(walks, {breakStates, maxSpeedMps}): Walk[]
+```
+
+Proximity never invents a match: it only breaks ties between buildings whose
+names the collector actually typed. Walks with no declarations are returned in
+`unhandled` so the legacy global clusterer in `floors.js` still handles them.
+
+Graph cells are scoped by `floorKey` (`"wean-hall:4"`) when present, falling back
+to the bare floor index — so two buildings' "floor 2" never merge, and pre-v5
+data behaves exactly as before.
+
+## Refined graph — `web/pipeline/refine.js`  (owner: D)
+
+The wayfinder routes over the REFINED graph, never the raw trace cells.
+
+```js
+refineGraph(rawGraph, opts?): {nodes, edges, stats}
+snapToRefined(refined, pos, {scope}): {edge, point, distanceM, alongM} | null
+routeRefined(refined, fromPos, toPos): {polyline, nodes, lengthM, snapFrom, snapTo} | null
+```
+
+A raw node exists because somebody's foot landed in a 1.5m cell — it records
+how people happened to walk, not how the building is laid out. Worse, two trips
+down one corridor **braid**: they weave between adjacent cells and cross-link,
+so nearly every node ends up degree-3. That can't be fixed topologically
+(merging "nearby" nodes either does nothing or collapses the whole corridor,
+depending on the radius), so refinement is geometric, as in the map-inference
+literature: **paint** traversals into a per-level occupancy raster with a brush
+about half a corridor wide, **thin** the band to a single-pixel skeleton
+(Zhang-Suen) — that skeleton *is* the centreline — then **vectorise**, **prune**
+hairs and short spurs, and **smooth**.
+
+Nodes come out as `junction` / `endpoint` / `portal` / `corridor`, which is what
+directions and a destination registry can actually refer to. Edges carry
+`evidence` (raw traversals supporting them), so repeat walks read as stronger
+and the map gains confidence as more people walk.
+
+**Snapping is onto an EDGE, not a node.** Junctions are sparse by design, so
+nearest-node snapping would drag someone standing mid-corridor to a junction
+tens of metres away; `snapToRefined` projects onto the polyline instead, and
+`routeRefined` splices both snap points in as temporary nodes.
+
+Measured on the current Supabase walks: 165 raw cells → 26 refined nodes
+(6.3× reduction); a route that took 11 raw cells becomes a 2-node path.
+
+## Node labels — `web/pipeline/node-labels.js`  (owner: D)
+
+```js
+labelRefinedGraph(refined, {buildings, customNames}): {labelled, byLevel}
+setCustomName(refined, nodeId, name) / collectCustomNames(refined): {ref -> name}
+buildingCodeOf(buildings, buildingId): string
+```
+
+Refined nodes come out of skeletonisation as anonymous geometry, so this names
+them the way CMU room numbers read — building code, floor, then which one:
+
+```
+ref   "WEH-4-J2"              stable-ish handle
+name  "WEH 4 · Junction 2"    what the UI shows
+```
+
+Kinds map to letters: `J`unction, `P`ortal (stairs/crossing), `E`ndpoint,
+`C`orridor. Building codes live in `web/data/buildings.json` as `code`, with
+`codeSource` marking provenance — **`curated` codes are the commonly-used forms
+hand-entered in `tools/fetch-buildings.mjs` and should be checked against the
+registrar's list; `derived` ones are acronyms generated from the name and are
+almost certainly not official.** OSM carries no codes for this campus (1
+`short_name` across 147 buildings), so there was nothing authoritative to pull.
+
+Building + floor is as specific as anything automatic can honestly be: the
+traces know which building and level (declared at every entrance and crossing)
+but nothing about what a space is *for*. Anything more meaningful — "Kitchen",
+"4401" — comes from a person via `customName`, which always wins and is keyed
+by `ref` so it survives a rebuild.
+
+**Ordinals follow quantised position, not discovery order**, so the same
+geometry always numbers the same way whatever order walks arrived in. They are
+NOT stable against the map changing: as coverage improves the centreline shifts
+and a junction can renumber — which is exactly why user names bind to
+`customName` rather than to the ref.
+
+Walks recorded before building declarations existed have no `buildingId` and
+label as `UNK-<floor>-<kind><n>`.
 
 ## File ownership (NO cross-writes — prevents collisions)
 
@@ -81,8 +270,14 @@ localToLatLon(x: number, z: number, g: Georef): { lat, lon }
 | **A** node anchoring | `web/pipeline/node-anchor.js`, `web/data/nodes.json` | contracts, path-schema |
 | **B** database | `supabase/*`, `Insid/Insid/Uploader.swift`, `Insid/Insid/ContentView.swift`, `web/data-loader.js`, `web/config.example.js` | contracts, WalkModel.swift |
 | **C** map overlay | `web/map.html`, `web/map.js`, `web/pipeline/georef.js` | `data-loader.js` (loadWalks/loadNodes), `node-anchor.js`, nodes.json |
+| **D** routing graph | `web/pipeline/{graph,db-graph,world-align,buildings,building-floors,refine,node-labels}.js`, `web/data/buildings.json`, `tools/fetch-buildings.mjs`, `web/graph-view.*`, `web/prototype.*` | contracts, path-schema, `data-loader.js` (loadWalks/loadNodes), `floors.js` |
 
 Shared, read-only for all: `docs/contracts.md`, `docs/path-schema.md`.
+
+Note: `web/main.js` imports `buildGraph`/`route` from `graph.js` (unchanged
+call signatures — `maxEdgeMeters` defaults to 8ft rather than unlimited, which
+only changes behavior when an edge was already longer than that, e.g. a
+stairwell run gets subdivided into multiple connector segments instead of one).
 
 ## Current-data note
 

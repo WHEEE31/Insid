@@ -533,9 +533,13 @@ function uniqueId(name, excludeId) {
 
 // ---- registry helpers ----
 function normRec(n) {
+  // Keep `name` null when the row has none (rather than falling back to the
+  // id) so renderMarker can tell "genuinely unnamed" apart from "named" and
+  // only label the latter -- see the label-sprite guard below.
+  const name = n.name != null ? String(n.name).trim() : "";
   return {
     id: String(n.id),
-    name: n.name != null ? String(n.name) : String(n.id),
+    name: name || null,
     floor: Number.isFinite(n.floor) ? n.floor : 0,
     x: +n.x || 0, y: +n.y || 0, z: +n.z || 0,
     lat: n.lat == null ? null : +n.lat,
@@ -599,10 +603,14 @@ function renderMarker(rec) {
       blending: THREE.AdditiveBlending, depthWrite: false,
     })
   ));
-  const label = makeLabelSprite(rec.name, `#${hexOf(BLUE_BRIGHT)}`);
-  label.scale.multiplyScalar(0.7);
-  label.position.set(0, 1.5, 0);
-  g.add(label);
+  // only show the floating text label for nodes with a real, user-given
+  // name -- an unnamed registry node still gets the bright dot, just no label.
+  if (rec.name) {
+    const label = makeLabelSprite(rec.name, `#${hexOf(BLUE_BRIGHT)}`);
+    label.scale.multiplyScalar(0.7);
+    label.position.set(0, 1.5, 0);
+    g.add(label);
+  }
   namedGroup.add(g);
   markerById.set(rec.id, g);
 }
@@ -660,7 +668,7 @@ function openOverlay(gn, px, py) {
   eoHead.textContent =
     `floor ${gn.floor} · x ${gn.x.toFixed(1)} z ${gn.z.toFixed(1)}` +
     (rec ? "" : " · new");
-  eoName.value = rec ? rec.name : "";
+  eoName.value = rec ? (rec.name || "") : "";
   eoClear.style.display = rec ? "" : "none";
   updateIdPreview();
   overlay.style.display = "block";

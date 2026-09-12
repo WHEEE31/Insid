@@ -25,6 +25,26 @@ It matches `docs/contracts.md` exactly.
 3. You should see "Success. No rows returned." Verify under **Table Editor**
    that `nodes` and `walks` now exist.
 
+## 2b. If your project predates v4 — restore the GPS/compass columns
+
+Walks uploaded before the v4 columns existed lost their `startLatLon` and
+`startHeading`: the recorder captured them, but `walks` had nowhere to put
+them. Anything location-aware needs them (notably the location-scoped
+start-node picker — see `web/pipeline/world-align.js`).
+
+1. Re-run [`schema.sql`](./schema.sql) — the v4 block is
+   `alter table ... add column if not exists`, so it's safe on a project that
+   already has data, and adds `start_lat`, `start_lon`, `gps_accuracy`,
+   `start_heading`, `heading_accuracy`, `north_offset_deg`, `north_aligned`.
+2. Run [`backfill-geo.sql`](./backfill-geo.sql) to put the lost values back for
+   the already-uploaded walks. It's generated from the original recordings in
+   `web/data/*.json`, which still carry them. Plain `UPDATE`s — safe to re-run,
+   and a no-op for rows that aren't in your table.
+
+New uploads carry these automatically (`Uploader.swift`), and
+`web/data-loader.js` maps them back into the nested `startLatLon` /
+`startHeading` shapes the pipeline expects.
+
 ## 3. Find your Project URL + anon key
 
 In the dashboard:

@@ -58,7 +58,7 @@ async function supabaseSelect(cfg, table, query = "select=*") {
 // walk JSON (camelCase) so downstream consumers don't care about the source.
 function rowToWalk(row) {
   const walk = {
-    schemaVersion: 2,
+    schemaVersion: 4,
     id: row.id,
     device: row.device ?? "iphone-arkit",
     recordedAt: row.recorded_at,
@@ -71,6 +71,26 @@ function rowToWalk(row) {
   if (row.orient_node_id != null) walk.orientNodeId = row.orient_node_id;
   if (row.end_node_id != null) walk.endNodeId = row.end_node_id;
   if (row.baro_reference != null) walk.baroReference = row.baro_reference;
+
+  // v4: GPS fix + compass + north calibration. Rebuilt into the nested shapes
+  // the walk JSON uses (startLatLon / startHeading) so code downstream can't
+  // tell whether a walk came from a file or the database. Older rows — and any
+  // project that hasn't run the v4 ALTER in supabase/schema.sql — just omit them.
+  if (row.start_lat != null && row.start_lon != null) {
+    walk.startLatLon = {
+      lat: row.start_lat,
+      lon: row.start_lon,
+      gpsAccuracy: row.gps_accuracy ?? null,
+    };
+  }
+  if (row.start_heading != null) {
+    walk.startHeading = {
+      trueHeading: row.start_heading,
+      accuracy: row.heading_accuracy ?? null,
+    };
+  }
+  if (row.north_offset_deg != null) walk.northOffsetDeg = row.north_offset_deg;
+  if (row.north_aligned != null) walk.northAligned = row.north_aligned;
   return walk;
 }
 

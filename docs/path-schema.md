@@ -57,8 +57,10 @@ these recordings — so we can try different strategies without re-walking.
 | `startNodeId`   | no       | v3: registry node the walk started on — translation anchor (see contracts.md). |
 | `orientNodeId`  | no       | v3: registry node walked toward — rotation anchor. |
 | `endNodeId`     | no       | v3: registry node at the end — optional drift correction. |
+| `northAligned`  | no       | v4: `true` only when the stored `points` have ALREADY been rotated so `-z` is true north and `+x` is east. Downstream then skips rotation entirely. |
+| `northOffsetDeg`| no       | v4: true bearing (°) that the recorded frame's `-z` axis points toward, captured by the face-north step (§North calibration). Preferred over `northAligned` — keeps points raw, lets the pipeline rotate. |
 | `startLatLon`   | no       | one-shot GPS at start — coarse Earth placement / display only.     |
-| `startHeading`  | no       | compass heading at start (°, true). Unreliable indoors; advisory.  |
+| `startHeading`  | no       | compass heading at start (°, true). Unreliable indoors; advisory. v4 adds `calibrated: true` when the collector asserted the facing rather than the magnetometer guessing it — then `trueHeading` is ~0 by construction. |
 | `baroReference` | no       | pressure (kPa) at start; `relAltitude` is derived relative to it.  |
 | `points[]`      | yes      | ordered samples, ~5–10 Hz                                          |
 
@@ -85,6 +87,107 @@ Two senses of "real-world anchored", handled separately:
 - **Place on Earth / display**: `startLatLon` (coarse GPS) + an OSM building
   footprint let us drop the shared frame onto a world map. Display only — never
   used to align walks.
+
+## North calibration (v4) — why the collector faces north first
+
+ARKit's yaw is arbitrary per session, so two walks recorded in different
+sessions can't be overlaid until you know each frame's rotation. The recorder
+therefore asks the collector to **rotate to face north before walking**; the
+session frame is then north-aligned by construction (`northAligned: true`,
+`startHeading.calibrated: true`).
+
+Why a human assertion beats the sensor: indoors the magnetometer is off by
+±15–25°, and recovering the frame rotation from it *post hoc* also requires
+assuming the collector walked the way they were facing. Estimating that way
+across the five walks recorded before this step existed gives answers that
+disagree with each other by **±53°** (`estimateFrameNorth` in
+`web/pipeline/world-align.js`). A person who knows which way north is can
+beat that in one gesture.
+
+Consequence for the pipeline: a north-aligned walk needs only a *translation*
+to be placed in a shared map — the orientation node (`orientNodeId`) exists
+purely to recover rotation, so it becomes redundant for calibrated walks.
+
+**Recorder gotcha — don't assume the frame is already north-aligned.** ARKit
+fixes its world frame when the *session* starts, which is when the app opens
+and the collector is facing some arbitrary direction — not when they later
+confirm they're facing north. So at the confirmation tap the recorder must read
+the camera's yaw **within the ARKit frame** and store it:
+
+```
+frameBearing(camera) = atan2(forward.x, -forward.z)   // in the ARKit frame
+northOffsetDeg       = normalize360(-frameBearing)     // since that facing IS north
+```
+
+Store `northOffsetDeg` and leave `points` raw (`northAligned` absent/false).
+`alignWalkToNorth()` in `web/pipeline/world-align.js` applies it, and prefers it
+over any magnetometer-based estimate. Setting `northAligned: true` is only
+correct if the recorder rotated the points itself before saving.
+
+## Entrances and building crossings (v5)
+
+A path must **start and end at a building entrance**, standing outside where GPS
+actually works, and must declare **every building it crosses into** along the way.
+
+```json
+{
+  "schemaVersion": 5,
+  "startEntrance": { "buildingId": "wean-hall", "buildingName": "Wean Hall",
+                     "floor": 4, "lat": 40.44267, "lon": -79.94581,
+                     "gpsAccuracy": 4.2, "t": 0 },
+  "buildingTransitions": [
+    { "buildingId": "doherty-hall", "buildingName": "Doherty Hall",
+      "floor": 2, "t": 210.5 }
+  ],
+  "endEntrance": { "buildingId": "doherty-hall", "floor": 1,
+                   "lat": 40.44252, "lon": -79.94450, "gpsAccuracy": 5.1, "t": 412.3 }
+}
+```
+
+**Why each piece is required:**
+
+| field | what it pins down |
+|---|---|
+| `startEntrance.lat/lon` | the walk's **translation** — where its frame sits on Earth. With `northOffsetDeg` supplying rotation, a session is fully placed without sharing an ARKit session with any other walk. |
+| `endEntrance.lat/lon` | a **closure constraint**. After placement the last point should land on this fix; the miss is accumulated drift, rubber-sheeted away by `placeWalkByEntrances`. Over a long baseline it also cross-checks the north gesture (`northCheckDeg`). |
+| `*.buildingId` | which building's floor ladder applies. Resolved from what the collector types via `web/pipeline/buildings.js` against an OSM gazetteer scoped to this campus, so "Roberts" can only mean Roberts Engineering Hall. |
+| `*.floor` | re-bases the barometer (below). Asked at **every** threshold, including the start. |
+| `gpsFixes[]` | `{t, lat, lon, gpsAccuracy}` banked opportunistically whenever signal is good mid-walk. GPS isn't only available at the endpoints — a collector who passes outside between buildings anchors everything up to that moment. |
+
+`endEntrance` is **strongly encouraged, not required.** Blocking a save without
+one would throw away real walking, so the recorder instead states the cost —
+how far you've walked since the last anchor, and the resulting error estimate
+(ARKit drift runs ~1–2% of distance travelled) — and lets the collector decide.
+A walk saved without it keeps `endEntrance: null`, and `placeWalkByEntrances`
+falls back to the last good `gpsFixes` entry: drift is then corrected up to that
+moment and held flat afterwards, rather than extrapolated past what's known.
+
+Outside is the one place GPS is trustworthy — roughly ±5m with open sky versus
+±15–25m indoors, which is what the pre-v5 recordings actually show. The recorder
+gates on signal quality before it will start or finish a path.
+
+### Floors are per building, and crossings don't preserve them
+
+Buildings sit at different grades and have different floor heights, so one
+global altitude ladder cannot fit them all. Each declaration re-bases it:
+
+```
+floor(p) = declaredFloor + round( (altitude(p) − altitudeAtDeclaration)
+                                  / floorHeight(building) )
+```
+
+Altitude is therefore only ever read *relative* to the most recent declaration,
+*within* one building — never compared across buildings or across walks, which
+is what makes weather drift and campus grade irrelevant.
+
+Floor numbers do **not** line up across a connector: you can walk from Wean 4
+straight into Doherty 2. So a transition carries the floor of the building being
+*entered*, and the floor of the one being *left* is inferred from the ladder in
+force — the two together give a correspondence ("Wean 4 ↔ Doherty 2"), returned
+as `floorLinks` by `web/pipeline/building-floors.js`.
+
+Downstream, points are tagged `floorKey` (`"wean-hall:4"`), and the routing graph
+scopes its grid cells by that — otherwise two buildings' "floor 2" would merge.
 
 ## Floors — why `relAltitude`, not GPS or ARKit `y`
 

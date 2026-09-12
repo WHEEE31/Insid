@@ -23,7 +23,8 @@ without re-walking.
 | `recorder/` | iOS ARKit recorder app + setup guide (build on a Mac) |
 | `web/` | three.js visualization + processing pipeline |
 | `web/pipeline/floors.js` | floor detection (barometric altitude peaks) |
-| `web/pipeline/graph.js` | routing graph + Dijkstra across floors |
+| `web/pipeline/graph.js` | routing graph + Dijkstra across floors (8ft max edge) |
+| `web/pipeline/world-align.js` | north alignment + rough lat/lon for the local frame |
 | `web/sample-path.js` | synthetic multi-floor walks (fallback data) |
 | `web/data/` | drop real recorded `walk-*.json` here + `index.json` |
 
@@ -31,10 +32,17 @@ without re-walking.
 
 ```
 cd web && python3 -m http.server 8777
-# open http://localhost:8777/index.html
 ```
 
-Loads real walks from `web/data/` if present, else synthetic sample data.
+| page | what it's for |
+|---|---|
+| `index.html` | the 3D hologram vis — walks, merged graph, routes |
+| `graph-view.html` | 2D per-floor debug view of the merged graph (flags any edge over the 8ft cap) |
+| `prototype.html` | **interactive app prototype** — collector + wayfinder flows in a phone frame, with simulated compass/GPS/walking. Iterate on UX here instead of rebuilding in Xcode. |
+| `map.html` | walks + nodes on a real OSM map |
+
+Loads real walks from Supabase if `web/config.js` exists, else `web/data/`,
+else synthetic sample data.
 
 ## Record real walks
 

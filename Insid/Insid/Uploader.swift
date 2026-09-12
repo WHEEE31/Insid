@@ -50,6 +50,16 @@ final class Uploader {
         let orient_node_id: String?
         let end_node_id: String?
         let baro_reference: Double?
+        // v4: the GPS fix + compass heading captured at the start of the walk,
+        // and the north calibration. These used to be dropped on upload (no
+        // columns existed) — see supabase/schema.sql's v4 ALTER block.
+        let start_lat: Double?
+        let start_lon: Double?
+        let gps_accuracy: Double?
+        let start_heading: Double?
+        let heading_accuracy: Double?
+        let north_offset_deg: Double?
+        let north_aligned: Bool?
         let points: [Point]
     }
 
@@ -86,7 +96,7 @@ final class Uploader {
             return done(.failure(.missingConfig))
         }
 
-        // v3: WalkModel now carries node refs — pass them straight through to the
+        // v3: node refs. v4: GPS/compass/north — all pass straight through to the
         // matching walks columns (null when the walk was recorded without them).
         let row = WalkRow(
             id: walk.id,
@@ -96,6 +106,13 @@ final class Uploader {
             orient_node_id: walk.orientNodeId,
             end_node_id: walk.endNodeId,
             baro_reference: walk.baroReference,
+            start_lat: walk.startLatLon?.lat,
+            start_lon: walk.startLatLon?.lon,
+            gps_accuracy: walk.startLatLon?.gpsAccuracy,
+            start_heading: walk.startHeading?.trueHeading,
+            heading_accuracy: walk.startHeading?.accuracy,
+            north_offset_deg: walk.northOffsetDeg,
+            north_aligned: walk.northAligned,
             points: walk.points
         )
 
