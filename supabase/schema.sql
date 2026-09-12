@@ -80,6 +80,33 @@ create policy "anon can insert walks"
   to anon
   with check (true);
 
+-- =====================================================================
+-- walks, v4 additions — the phone's GPS + compass, and north calibration.
+--
+-- These were being thrown away: the recorder captures startLatLon and
+-- startHeading (see docs/path-schema.md) but there were no columns to put
+-- them in, so every uploaded row lost them. Anything location-aware needs
+-- them back — notably the location-scoped start-node picker, which uses a
+-- rough fix to narrow 60+ registry nodes down to the ~5 you could be
+-- standing on (web/pipeline/world-align.js).
+--
+-- Written as ALTERs rather than edits to the create above so this file stays
+-- safe to re-run against a project that already has data.
+-- =====================================================================
+alter table public.walks
+  add column if not exists start_lat        double precision,  -- one-shot GPS at start
+  add column if not exists start_lon        double precision,
+  add column if not exists gps_accuracy     double precision,  -- meters, horizontal
+  add column if not exists start_heading    double precision,  -- compass, degrees true
+  add column if not exists heading_accuracy double precision,  -- degrees
+  -- v4 north calibration: the true bearing the recorded frame's -z axis points
+  -- toward, captured when the collector confirms they're facing north. Null on
+  -- walks recorded before the calibration step existed.
+  add column if not exists north_offset_deg double precision,
+  -- true only when the stored points were ALREADY rotated north-up by the
+  -- recorder; normally false, with north_offset_deg carrying the rotation.
+  add column if not exists north_aligned    boolean;
+
 -- Allow the anon role to INSERT + UPDATE nodes (web edit-mode naming, the iOS
 -- "+ new node" button, and the node registry seeding all upsert here).
 -- Upsert = insert with Prefer: resolution=merge-duplicates, which needs both.
