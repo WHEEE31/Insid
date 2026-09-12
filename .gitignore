@@ -180,3 +180,17 @@ wsgi.py
 
 # Keys
 keys/*.txt
+
+# Xcode / Swift Package Manager
+.build/
+DerivedData/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.moved-aside
+*.pbxuser
+*.xccheckout
+
+# iOS build output
+ios/build/
+ios/Build/
