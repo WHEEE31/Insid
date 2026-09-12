@@ -57,8 +57,10 @@ these recordings — so we can try different strategies without re-walking.
 | `startNodeId`   | no       | v3: registry node the walk started on — translation anchor (see contracts.md). |
 | `orientNodeId`  | no       | v3: registry node walked toward — rotation anchor. |
 | `endNodeId`     | no       | v3: registry node at the end — optional drift correction. |
+| `northAligned`  | no       | v4: `true` only when the stored `points` have ALREADY been rotated so `-z` is true north and `+x` is east. Downstream then skips rotation entirely. |
+| `northOffsetDeg`| no       | v4: true bearing (°) that the recorded frame's `-z` axis points toward, captured by the face-north step (§North calibration). Preferred over `northAligned` — keeps points raw, lets the pipeline rotate. |
 | `startLatLon`   | no       | one-shot GPS at start — coarse Earth placement / display only.     |
-| `startHeading`  | no       | compass heading at start (°, true). Unreliable indoors; advisory.  |
+| `startHeading`  | no       | compass heading at start (°, true). Unreliable indoors; advisory. v4 adds `calibrated: true` when the collector asserted the facing rather than the magnetometer guessing it — then `trueHeading` is ~0 by construction. |
 | `baroReference` | no       | pressure (kPa) at start; `relAltitude` is derived relative to it.  |
 | `points[]`      | yes      | ordered samples, ~5–10 Hz                                          |
 
@@ -85,6 +87,42 @@ Two senses of "real-world anchored", handled separately:
 - **Place on Earth / display**: `startLatLon` (coarse GPS) + an OSM building
   footprint let us drop the shared frame onto a world map. Display only — never
   used to align walks.
+
+## North calibration (v4) — why the collector faces north first
+
+ARKit's yaw is arbitrary per session, so two walks recorded in different
+sessions can't be overlaid until you know each frame's rotation. The recorder
+therefore asks the collector to **rotate to face north before walking**; the
+session frame is then north-aligned by construction (`northAligned: true`,
+`startHeading.calibrated: true`).
+
+Why a human assertion beats the sensor: indoors the magnetometer is off by
+±15–25°, and recovering the frame rotation from it *post hoc* also requires
+assuming the collector walked the way they were facing. Estimating that way
+across the five walks recorded before this step existed gives answers that
+disagree with each other by **±53°** (`estimateFrameNorth` in
+`web/pipeline/world-align.js`). A person who knows which way north is can
+beat that in one gesture.
+
+Consequence for the pipeline: a north-aligned walk needs only a *translation*
+to be placed in a shared map — the orientation node (`orientNodeId`) exists
+purely to recover rotation, so it becomes redundant for calibrated walks.
+
+**Recorder gotcha — don't assume the frame is already north-aligned.** ARKit
+fixes its world frame when the *session* starts, which is when the app opens
+and the collector is facing some arbitrary direction — not when they later
+confirm they're facing north. So at the confirmation tap the recorder must read
+the camera's yaw **within the ARKit frame** and store it:
+
+```
+frameBearing(camera) = atan2(forward.x, -forward.z)   // in the ARKit frame
+northOffsetDeg       = normalize360(-frameBearing)     // since that facing IS north
+```
+
+Store `northOffsetDeg` and leave `points` raw (`northAligned` absent/false).
+`alignWalkToNorth()` in `web/pipeline/world-align.js` applies it, and prefers it
+over any magnetometer-based estimate. Setting `northAligned: true` is only
+correct if the recorder rotated the points itself before saving.
 
 ## Floors — why `relAltitude`, not GPS or ARKit `y`
 

@@ -78,6 +78,20 @@ localToLatLon(x: number, z: number, g: Georef): { lat, lon }
   `rowToWalk`/`loadNodes` in `data-loader.js` so `graph.js`/`db-graph.js` (owner
   D, below) pick it up automatically — they already carry a `.building` field
   through if present and need no other change.
+- **BUG(schema, owner B): the `walks` table drops the phone's GPS and compass.**
+  `docs/path-schema.md` defines `startLatLon` and `startHeading`, the recorder
+  captures both (they're present in `web/data/walk-*.json`), but `walks` has no
+  columns for them — so every uploaded row loses them. Verified: all four rows
+  in Supabase come back with `startLatLon: undefined`. This blocks anything
+  location-aware, including the location-scoped start-node picker and
+  `world-align.js`'s `estimateFrameGeoref`. Fix is additive:
+  `alter table public.walks add column if not exists start_lat double precision,
+  add column if not exists start_lon double precision,
+  add column if not exists gps_accuracy double precision,
+  add column if not exists start_heading double precision,
+  add column if not exists heading_accuracy double precision,
+  add column if not exists north_aligned boolean;`
+  plus the matching fields in `Uploader.swift` and `rowToWalk` in `data-loader.js`.
 
 ## Routing graph — `web/pipeline/graph.js`, `web/pipeline/db-graph.js`  (owner: D)
 
@@ -114,6 +128,33 @@ shared frame, they won't connect here until something (future anchoring/
 georeferencing work) puts their points in one frame — that's out of scope for
 this module, which only clusters whatever frame the input walks are already in.
 
+## World alignment — `web/pipeline/world-align.js`  (owner: D)
+
+Relates the local (ARKit/graph) frame to the real world: which way is north,
+and where on Earth the frame's origin sits. Needed so a collector can be shown
+"the 5 nodes near you" instead of all 60+, and so walks from different sessions
+can be overlaid without a per-walk rotation fit.
+
+```js
+// -z = north and +x = east after alignment. northOffsetDeg is the true bearing
+// the RAW frame's -z axis points toward.
+alignWalkToNorth(walk, opts?: {northOffsetDeg}): Walk   // sets northAligned
+estimateFrameNorth(walks): {northOffsetDeg, n, spreadDeg} | null
+estimateFrameGeoref(walks, opts?): Georef | null        // from walks' startLatLon
+localToLatLon(x, z, g) / latLonToLocal(lat, lon, g)
+nodesWithLatLon(nodes, g): Node[]                       // tags derived ones geoDerived
+nearestNodesToLatLon(nodes, lat, lon, {k, floor}): Node[]  // + distanceM, nearest first
+```
+
+Two ways a frame's north offset is known, and the difference is the point of
+the calibration flow:
+- **Calibrated** — the collector physically faces north before walking, so the
+  frame is north-aligned by construction (`northAligned: true`, nothing to fit).
+- **Estimated (legacy)** — compare the recorded compass heading at start against
+  the bearing of the walk's first few meters, assuming the collector walked
+  roughly the way they faced. On the current five recorded walks this estimate
+  disagrees with itself by **±53°**, which is the guesswork calibration removes.
+
 ## File ownership (NO cross-writes — prevents collisions)
 
 | Stream | Owns (create/edit) | May IMPORT/READ only |
@@ -121,7 +162,7 @@ this module, which only clusters whatever frame the input walks are already in.
 | **A** node anchoring | `web/pipeline/node-anchor.js`, `web/data/nodes.json` | contracts, path-schema |
 | **B** database | `supabase/*`, `Insid/Insid/Uploader.swift`, `Insid/Insid/ContentView.swift`, `web/data-loader.js`, `web/config.example.js` | contracts, WalkModel.swift |
 | **C** map overlay | `web/map.html`, `web/map.js`, `web/pipeline/georef.js` | `data-loader.js` (loadWalks/loadNodes), `node-anchor.js`, nodes.json |
-| **D** routing graph | `web/pipeline/graph.js`, `web/pipeline/db-graph.js` | contracts, path-schema, `data-loader.js` (loadWalks/loadNodes), `floors.js` |
+| **D** routing graph | `web/pipeline/graph.js`, `web/pipeline/db-graph.js`, `web/pipeline/world-align.js`, `web/graph-view.*`, `web/prototype.*` | contracts, path-schema, `data-loader.js` (loadWalks/loadNodes), `floors.js` |
 
 Shared, read-only for all: `docs/contracts.md`, `docs/path-schema.md`.
 
