@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Graph Debug View</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #02040a; }
+      canvas { display: block; }
+      #hud {
+        position: fixed; top: 14px; left: 14px; z-index: 10;
+        min-width: 220px; max-width: 300px;
+        font: 11.5px/1.55 ui-monospace, "SF Mono", Menlo, monospace;
+        color: #8fb6cf;
+        padding: 12px 16px; border-radius: 2px;
+        background: rgba(4,10,20,0.78);
+        border: 1px solid rgba(63,208,255,0.35);
+        box-shadow: 0 0 24px rgba(0,0,0,0.55);
+        letter-spacing: 0.03em;
+      }
+      #hud .title { color: #eafdff; font-weight: 600; margin-bottom: 8px; letter-spacing: 0.08em; }
+      #hud .row { display: flex; justify-content: space-between; gap: 10px; }
+      #hud .k { color: #4c7f9c; }
+      #hud .v { color: #cdeeff; }
+      #hud .warn { color: #ffb057; }
+      #floors { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+      #floors button {
+        font: 11px ui-monospace, monospace; letter-spacing: 0.04em;
+        color: #8fb6cf; background: rgba(10,24,40,0.7);
+        border: 1px solid rgba(63,208,255,0.35); border-radius: 2px;
+        padding: 3px 8px; cursor: pointer;
+      }
+      #floors button.active { color: #02040a; background: #6ff0ff; border-color: #6ff0ff; }
+      #legend { margin-top: 10px; display: flex; flex-direction: column; gap: 3px; }
+      #legend .chip { display: flex; align-items: center; gap: 6px; }
+      #legend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+      #hint { position: fixed; bottom: 12px; left: 14px; z-index: 10; color: #3f647c;
+        font: 10.5px ui-monospace, monospace; letter-spacing: 0.03em; }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <div id="hud">
+      <div class="title">◤ GRAPH DEBUG VIEW</div>
+      <div class="row"><span class="k">NODES</span><span class="v" id="stat-nodes">—</span></div>
+      <div class="row"><span class="k">EDGES</span><span class="v" id="stat-edges">—</span></div>
+      <div class="row"><span class="k">MAX EDGE</span><span class="v" id="stat-maxedge">—</span></div>
+      <div class="row"><span class="k">BUILDINGS</span><span class="v" id="stat-buildings">—</span></div>
+      <div id="floors"></div>
+      <div id="legend"></div>
+    </div>
+    <div id="hint">SCROLL ZOOM · DRAG PAN · CLICK NODE FOR DETAILS</div>
+    <script type="module" src="./graph-view.js"></script>
+  </body>
+</html>
