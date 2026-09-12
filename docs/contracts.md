@@ -224,6 +224,45 @@ tens of metres away; `snapToRefined` projects onto the polyline instead, and
 Measured on the current Supabase walks: 165 raw cells → 26 refined nodes
 (6.3× reduction); a route that took 11 raw cells becomes a 2-node path.
 
+## Node labels — `web/pipeline/node-labels.js`  (owner: D)
+
+```js
+labelRefinedGraph(refined, {buildings, customNames}): {labelled, byLevel}
+setCustomName(refined, nodeId, name) / collectCustomNames(refined): {ref -> name}
+buildingCodeOf(buildings, buildingId): string
+```
+
+Refined nodes come out of skeletonisation as anonymous geometry, so this names
+them the way CMU room numbers read — building code, floor, then which one:
+
+```
+ref   "WEH-4-J2"              stable-ish handle
+name  "WEH 4 · Junction 2"    what the UI shows
+```
+
+Kinds map to letters: `J`unction, `P`ortal (stairs/crossing), `E`ndpoint,
+`C`orridor. Building codes live in `web/data/buildings.json` as `code`, with
+`codeSource` marking provenance — **`curated` codes are the commonly-used forms
+hand-entered in `tools/fetch-buildings.mjs` and should be checked against the
+registrar's list; `derived` ones are acronyms generated from the name and are
+almost certainly not official.** OSM carries no codes for this campus (1
+`short_name` across 147 buildings), so there was nothing authoritative to pull.
+
+Building + floor is as specific as anything automatic can honestly be: the
+traces know which building and level (declared at every entrance and crossing)
+but nothing about what a space is *for*. Anything more meaningful — "Kitchen",
+"4401" — comes from a person via `customName`, which always wins and is keyed
+by `ref` so it survives a rebuild.
+
+**Ordinals follow quantised position, not discovery order**, so the same
+geometry always numbers the same way whatever order walks arrived in. They are
+NOT stable against the map changing: as coverage improves the centreline shifts
+and a junction can renumber — which is exactly why user names bind to
+`customName` rather than to the ref.
+
+Walks recorded before building declarations existed have no `buildingId` and
+label as `UNK-<floor>-<kind><n>`.
+
 ## File ownership (NO cross-writes — prevents collisions)
 
 | Stream | Owns (create/edit) | May IMPORT/READ only |
@@ -231,7 +270,7 @@ Measured on the current Supabase walks: 165 raw cells → 26 refined nodes
 | **A** node anchoring | `web/pipeline/node-anchor.js`, `web/data/nodes.json` | contracts, path-schema |
 | **B** database | `supabase/*`, `Insid/Insid/Uploader.swift`, `Insid/Insid/ContentView.swift`, `web/data-loader.js`, `web/config.example.js` | contracts, WalkModel.swift |
 | **C** map overlay | `web/map.html`, `web/map.js`, `web/pipeline/georef.js` | `data-loader.js` (loadWalks/loadNodes), `node-anchor.js`, nodes.json |
-| **D** routing graph | `web/pipeline/{graph,db-graph,world-align,buildings,building-floors,refine}.js`, `web/data/buildings.json`, `tools/fetch-buildings.mjs`, `web/graph-view.*`, `web/prototype.*` | contracts, path-schema, `data-loader.js` (loadWalks/loadNodes), `floors.js` |
+| **D** routing graph | `web/pipeline/{graph,db-graph,world-align,buildings,building-floors,refine,node-labels}.js`, `web/data/buildings.json`, `tools/fetch-buildings.mjs`, `web/graph-view.*`, `web/prototype.*` | contracts, path-schema, `data-loader.js` (loadWalks/loadNodes), `floors.js` |
 
 Shared, read-only for all: `docs/contracts.md`, `docs/path-schema.md`.
 

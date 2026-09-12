@@ -25,6 +25,7 @@ import { buildGraph, route as routeGraph, splitOnTrackingLoss } from "./pipeline
 import { loadBuildings, resolveBuilding, buildingsNear } from "./pipeline/buildings.js";
 import { annotateBuildingFloors } from "./pipeline/building-floors.js";
 import { refineGraph, snapToRefined, routeRefined } from "./pipeline/refine.js";
+import { labelRefinedGraph, collectCustomNames } from "./pipeline/node-labels.js";
 import * as WA from "./pipeline/world-align.js";
 
 const NORTH_TOLERANCE_DEG = 12;
@@ -38,7 +39,7 @@ const S = {
   stage: "start",
   source: "…",
   walks: [], nodes: [], nodesGeo: [], nodesById: {}, buildings: [],
-  graph: null, refined: null, showRaw: true, campus: null, frameGeoref: null, floorLinks: [], floorHeights: {},
+  graph: null, refined: null, labels: null, customNames: {}, showRaw: true, campus: null, frameGeoref: null, floorLinks: [], floorHeights: {},
   sim: {
     heading: 137, x: 0, z: 0,
     buildingId: null, floor: 1, altitude: 0,
@@ -163,7 +164,12 @@ function rebuild() {
   S.graph = buildGraph(fragments);
   // The wayfinder routes over the REFINED graph, not the raw trace cells —
   // see web/pipeline/refine.js for why.
+  const customNames = S.refined ? collectCustomNames(S.refined) : (S.customNames || {});
+  S.customNames = customNames;
   S.refined = refineGraph(S.graph);
+  // Name them: building code + floor + which one ("WEH-4-J2"). Any name a
+  // person gave a node is keyed by ref, so it survives this rebuild.
+  S.labels = labelRefinedGraph(S.refined, { buildings: S.buildings, customNames });
 }
 
 function simGps() {
@@ -561,10 +567,17 @@ function drawMap(canvas) {
       e.polyline.forEach((p, i) => (i ? ctx.lineTo(px(p.x), py(p.z)) : ctx.moveTo(px(p.x), py(p.z))));
       ctx.stroke();
     }
+    ctx.font = "9px ui-monospace, monospace";
     for (const n of S.refined.nodes.values()) {
       if (n.kind === "corridor") continue;
+      const sx = px(n.x), sy = py(n.z);
       ctx.fillStyle = n.kind === "junction" ? "#eafdff" : n.kind === "portal" ? "#fbbf24" : "rgba(125,232,247,0.7)";
-      ctx.beginPath(); ctx.arc(px(n.x), py(n.z), n.kind === "junction" ? 3.4 : 2.6, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(sx, sy, n.kind === "junction" ? 3.4 : 2.6, 0, Math.PI * 2); ctx.fill();
+      // labels only near the viewer, or the map turns into a wall of text
+      if (n.ref && Math.hypot(n.x - S.sim.x, n.z - S.sim.z) < 30) {
+        ctx.fillStyle = n.customName ? "#34e07a" : "rgba(234,253,255,0.55)";
+        ctx.fillText(n.customName || n.ref, sx + 5, sy - 4);
+      }
     }
   }
 
@@ -1099,21 +1112,44 @@ const screens = {
 
   // ---- user (wayfinder) ----
   dest: () => {
-    const near = nearbyNodes(5);
-    const all = S.nodesGeo.slice(0, 60);
+    // Destinations come from the LABELLED REFINED graph, not the raw registry:
+    // those are the places with names a person can read ("WEH 4 · Junction 2")
+    // rather than grid cells named after their own coordinates.
+    const here = { x: S.sim.x, y: S.sim.altitude, z: S.sim.z };
+    const places = [...(S.refined?.nodes.values() || [])]
+      .filter((n) => n.kind !== "corridor")
+      .map((n) => ({ ...n, distanceM: Math.hypot(n.x - here.x, n.z - here.z) }))
+      .sort((a, b) => a.distanceM - b.distanceM)
+      .slice(0, 60);
+    const snap = S.refined ? snapToRefined(S.refined, here) : null;
+
+    // group by level so a long list stays readable
+    const groups = new Map();
+    for (const p of places) {
+      const key = `${p.code ?? "UNK"} ${p.floor ?? 0}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(p);
+    }
+
     return {
       label: "USER · DESTINATION",
       html: `
         <h2 class="title">Where to?</h2>
-        <div class="sub">Near <b style="color:var(--cyan-dim)">${near[0] ? (near[0].name || near[0].id) : "—"}</b></div>
+        <div class="sub">${snap
+          ? `On <b style="color:var(--cyan-dim)">${snap.edge.name || "the map"}</b>, ${snap.distanceM.toFixed(1)}m from the line`
+          : "Not on the map yet"}</div>
         <canvas id="map" class="map" data-h="140" data-scale="3"></canvas>
         <div class="sub" style="margin:10px 0 4px;font-size:10.5px;letter-spacing:0.14em">DESTINATION</div>
         <div style="flex:1;overflow-y:auto;min-height:0">
-          ${all.map((n) => `
-            <button class="card ${S.user.destId === n.id ? "sel" : ""}" data-id="${n.id}">
-              <div class="nm">${n.name || n.id}</div>
-              <div class="meta">Floor ${n.floor ?? 0}</div>
-            </button>`).join("")}
+          ${places.length ? [...groups].map(([level, list]) => `
+            <div class="levelhead">${level}</div>
+            ${list.map((n) => `
+              <button class="card ${S.user.destId === n.id ? "sel" : ""}" data-id="${n.id}">
+                <span class="dist">${n.distanceM.toFixed(0)}m</span>
+                <div class="nm">${n.name}</div>
+                <div class="meta">${n.ref}${n.customName ? " · named" : ""} · ${n.kind}</div>
+              </button>`).join("")}`).join("")
+            : `<div class="sub">No map yet — record a path in COLLECTOR mode first.</div>`}
         </div>
         <button class="big" id="go" ${S.user.destId ? "" : "disabled"}>Find route</button>`,
       wire: () => {
@@ -1121,16 +1157,14 @@ const screens = {
           b.onclick = () => { S.user.destId = b.dataset.id; render(); };
         });
         $("#go").onclick = () => {
-          const from = nearbyNodes(1)[0];
-          const to = S.nodesById[S.user.destId];
-          S.user.startId = from ? from.id : null;
-          // Route over the refined graph, and snap onto an EDGE rather than
-          // the nearest raw cell — junctions are sparse by design.
-          S.user.result = from && to && S.refined
-            ? routeRefined(S.refined, from, to) : null;
+          const to = S.refined?.nodes.get(S.user.destId);
+          S.user.startId = null;
+          // Route over the refined graph, snapping onto an EDGE rather than the
+          // nearest raw cell — junctions are sparse by design.
+          S.user.result = to && S.refined ? routeRefined(S.refined, here, to) : null;
           const res = S.user.result;
           log(res
-            ? `route ${res.lengthM.toFixed(0)}m · snapped ${res.snapFrom.distanceM.toFixed(1)}m / ${res.snapTo.distanceM.toFixed(1)}m onto the refined map`
+            ? `route to ${to.name}: ${res.lengthM.toFixed(0)}m · snapped ${res.snapFrom.distanceM.toFixed(1)}m onto ${res.snapFrom.edge.ref || "the map"}`
             : "no route found");
           go("route");
         };
@@ -1140,14 +1174,14 @@ const screens = {
 
   route: () => {
     const r = S.user.result;
-    const to = S.nodesById[S.user.destId];
-    const from = S.nodesById[S.user.startId];
+    const to = S.refined?.nodes.get(S.user.destId);
+    const from = r?.snapFrom?.edge;
     const floors = r ? [...new Set(r.nodes.map((n) => n.floorKey ?? n.floor))] : [];
     return {
       label: "USER · ROUTE",
       html: `
-        <h2 class="title">${to ? (to.name || to.id) : "Route"}</h2>
-        <div class="sub">${from ? `from ${from.name || from.id}` : ""}</div>
+        <h2 class="title">${to ? to.name : "Route"}</h2>
+        <div class="sub">${to ? to.ref : ""}${from ? ` · from ${from.name || from.ref || "the map"}` : ""}</div>
         ${r ? `
           <div class="stats">
             <div class="stat"><b>${r.lengthM.toFixed(0)}m</b><span>DIST</span></div>
@@ -1220,6 +1254,9 @@ function railHtml() {
     <div class="kv"><span>reduction</span><b>${
       S.refined && S.graph && S.refined.nodes.size
         ? (S.graph.nodes.size / S.refined.nodes.size).toFixed(1) + "×" : "—"}</b></div>
+    <div class="kv"><span>labelled nodes</span><b>${S.labels ? S.labels.labelled : 0}</b></div>
+    ${S.labels && Object.keys(S.labels.byLevel).length ? Object.entries(S.labels.byLevel).slice(0, 6).map(([lvl, n]) =>
+      `<div class="kv"><span style="padding-left:8px">${lvl}</span><b>${n} nodes</b></div>`).join("") : ""}
     <div class="kv"><span>junctions / portals</span><b>${
       S.refined ? [...S.refined.nodes.values()].filter((n) => n.kind === "junction").length : 0} / ${
       S.refined ? [...S.refined.nodes.values()].filter((n) => n.kind === "portal").length : 0}</b></div>
