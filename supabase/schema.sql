@@ -79,3 +79,19 @@ create policy "anon can insert walks"
   for insert
   to anon
   with check (true);
+
+-- Allow the anon role to INSERT + UPDATE nodes (web edit-mode naming, the iOS
+-- "+ new node" button, and the node registry seeding all upsert here).
+-- Upsert = insert with Prefer: resolution=merge-duplicates, which needs both.
+create policy "anon can insert nodes"
+  on public.nodes
+  for insert
+  to anon
+  with check (true);
+
+create policy "anon can update nodes"
+  on public.nodes
+  for update
+  to anon
+  using (true)
+  with check (true);

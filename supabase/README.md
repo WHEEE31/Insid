@@ -53,20 +53,34 @@ export const SUPABASE_ANON_KEY = "eyJhbGci...your-anon-key...";
   to the local JSON files in `web/data/` (nothing breaks offline).
 - With config present, `loadWalks()` and `loadNodes()` read from Supabase REST.
 
-## 5. Configure the iOS recorder (upload)
+## 5. Configure the iOS recorder (upload + node pull)
 
-The app reads the same two values from its **Info.plist**:
+The app reads its Supabase creds from a small compiled-in file that is
+**gitignored** (so the key never lands in the repo). Set it up once:
 
-| Info.plist key      | Value                                   |
-|---------------------|-----------------------------------------|
-| `SUPABASE_URL`      | your Project URL (e.g. `https://abcdefgh.supabase.co`) |
-| `SUPABASE_ANON_KEY` | your `anon` `public` key                |
+```bash
+cp supabase/SupabaseConfig.example.swift Insid/Insid/SupabaseConfig.swift
+```
 
-In Xcode: select the target → **Info** tab → add two rows (String) with those
-keys, or edit `Info.plist` directly. Then build/run. The **Upload** button
-(cloud icon, next to Share) POSTs the selected recording to the `walks` table.
-If the keys are missing/placeholder, Upload reports a config error instead of
-crashing.
+Then edit `Insid/Insid/SupabaseConfig.swift` and fill in:
+
+```swift
+enum SupabaseConfig {
+    static let url = "https://abcdefgh.supabase.co"   // BASE url, no /rest/v1
+    static let anonKey = "eyJhbGci...your-anon-key..."
+}
+```
+
+- `Insid/Insid/SupabaseConfig.swift` is **gitignored** — never commit real keys.
+- Values are the same as `web/config.js`.
+- (Fallback: the app also accepts `SUPABASE_URL` / `SUPABASE_ANON_KEY` Info.plist
+  keys, but the compiled-in file is the recommended path — the target generates
+  its Info.plist, which makes adding custom keys there awkward.)
+
+Then build/run. The node-selection map pulls real nodes from the `nodes` table,
+and the **Upload** button (cloud icon) POSTs the selected recording to `walks`.
+If creds are missing/placeholder, the app falls back to bundled seed nodes and
+Upload reports a config error instead of crashing.
 
 ## Data flow / column mapping
 

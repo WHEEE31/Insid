@@ -29,7 +29,8 @@ async function getConfig() {
           typeof key === "string" && key.length > 0 &&
           !key.includes("YOUR-")
         ) {
-          return { url: url.replace(/\/$/, ""), key };
+          // normalize to BASE url (tolerate a stray /rest/v1 or trailing slash)
+          return { url: url.replace(/\/+$/, "").replace(/\/rest\/v1$/, ""), key };
         }
         return null;
       })
@@ -82,9 +83,12 @@ export async function loadWalks() {
   if (cfg) {
     try {
       const rows = await supabaseSelect(cfg, "walks", "select=*&order=recorded_at.asc");
-      const walks = rows.map(rowToWalk);
-      console.log(`[vis] loaded ${walks.length} walk(s) from Supabase`);
-      return walks;
+      if (rows.length) {
+        const walks = rows.map(rowToWalk);
+        console.log(`[vis] loaded ${walks.length} walk(s) from Supabase`);
+        return walks;
+      }
+      console.log("[vis] Supabase 'walks' is empty — falling back to local files");
     } catch (e) {
       console.warn("[vis] Supabase walks load failed, falling back to local:", e);
       // fall through to local files
@@ -120,9 +124,12 @@ export async function loadNodes() {
   if (cfg) {
     try {
       const rows = await supabaseSelect(cfg, "nodes", "select=*");
-      console.log(`[vis] loaded ${rows.length} node(s) from Supabase`);
-      // Columns already match the Node shape (id,name,floor,x,y,z,lat,lon).
-      return rows;
+      if (rows.length) {
+        console.log(`[vis] loaded ${rows.length} node(s) from Supabase`);
+        // Columns already match the Node shape (id,name,floor,x,y,z,lat,lon).
+        return rows;
+      }
+      console.log("[vis] Supabase 'nodes' is empty — falling back to local file");
     } catch (e) {
       console.warn("[vis] Supabase nodes load failed, falling back to local:", e);
       // fall through to local file
