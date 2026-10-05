@@ -1,7 +1,7 @@
-# hackcmu — Crowdsourced Indoor Mapping
+# Insid — Crowdsourced Indoor Mapping
 
 Record the 3D path you walk indoors (with elevation), crowdsource many walks into
-one shared map, and route/visualize it in 3D. HackCMU proof-of-concept.
+one shared map, and route/visualize it in 3D. Started as a HackCMU proof-of-concept.
 
 ## How it fits together
 
@@ -58,3 +58,8 @@ AirDrop the JSON into `web/data/`.
 coarse GPS + OSM footprint; **(b)** stitch different people's walks into one frame
 → a *shared physical start spot* + ARKit tracking (NOT GPS — too noisy indoors).
 Floors come from the **barometer**, not GPS altitude. Details in the schema doc.
+
+## Credits
+
+Insid started at HackCMU as a team project by Sam Wang, Alexa Chang, Kyle Lee, and
+Siddharth Nair. This repository is where I (Siddharth Nair) now continue it on my own.

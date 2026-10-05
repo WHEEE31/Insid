@@ -71,7 +71,7 @@ If a Render service ends up with a different name, fix those.
 ### First-time setup (one manual pass, in the Render dashboard)
 
 1. Render → **New → Blueprint**
-2. Connect the `alexacchang/hackcmu` repo and pick `main`
+2. Connect the `WHEEE31/Insid` repo and pick `main`
 3. Render reads `render.yaml` and offers all three sites — **Apply**
 
 After that, every push to `main` deploys automatically.
