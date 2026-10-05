@@ -367,7 +367,7 @@
         <a class="orb orb--fun" href="https://insid-behind.onrender.com/" target="_blank" rel="noopener" aria-label="Behind the scenes">
           <span class="orb-star">&#10022;</span>
         </a>
-        <span class="orb-label">behind the<br>scenes</span>
+        <span class="orb-label">behind the<br>scenes<br><em>· soon</em></span>
       </div>
     </div>
   </div>
@@ -384,11 +384,11 @@
       <div class="eyebrow">01 · The problem</div>
       <h2 class="section-title">Maps end at the front door.</h2>
       <div class="prose">
-        <p>It's 15&#176;F and snowing, and the fastest way to your next class is somehow the one route nobody has ever mapped. Turn-by-turn directions handle streets and parking lots without effort; the inside of the building &mdash; which floor, which stairwell, which door actually opens &mdash; is invisible to them.</p>
+        <p>It's 15&#176;F and snowing, and the fastest way to your next class is somehow the one route nobody has ever mapped. Turn-by-turn directions handle streets and parking lots without effort; the inside of the building &mdash; which floor, which stairwell, which bridge is actually accessible &mdash; is invisible to them.</p>
         <p>The last serious attempt at solving that was in 2013.</p>
       </div>
       <div class="stat-row">
-        <div class="stat"><div class="num">19.4M</div><div class="lbl">students enrolled at U.S. colleges this year</div></div>
+        <div class="stat"><div class="num">18,000</div><div class="lbl">students enrolled at CMU this year</div></div>
         <div class="stat"><div class="num">0</div><div class="lbl">mainstream apps with indoor routes for academic buildings</div></div>
         <div class="stat"><div class="num">2013</div><div class="lbl">the year the last indoor-positioning startup got acquired &mdash; and shelved</div></div>
       </div>
@@ -403,7 +403,7 @@
     <div class="wrap">
       <div class="eyebrow">02 · The solution</div>
       <h2 class="section-title">Insid</h2>
-      <div class="prose"><p>One walk becomes the map for everyone who follows it.</p></div>
+      <div class="prose"><p>Many walks combine to uncover optimal routes from point A to point B.</p></div>
       <div class="steps">
         <div class="step">
           <div class="step-no mono">STEP 1</div>
@@ -431,7 +431,7 @@
     <span class="sticker sticker--float sticker--sm sticker--smoke" aria-hidden="true" style="bottom:10%;left:6%;"><svg class="mark"><use href="#logo-mark"/></svg><span class="puff"></span></span>
     <div class="wrap">
       <div class="eyebrow">03 · Proof</div>
-      <h2 class="section-title">Five buildings. One setup pass.</h2>
+      <h2 class="section-title">Mapping five buildings.</h2>
       <div class="stat-row">
         <div class="stat"><div class="num">5</div><div class="lbl">buildings mapped &mdash; Hamerschlag, Roberts, Wean, Gates&ndash;Hillman, Newell&ndash;Simon</div></div>
         <div class="stat"><div class="num">&lt;60<span style="font-size:1rem;">min</span></div><div class="lbl">from empty map to a routable graph</div></div>
@@ -450,7 +450,7 @@
     <span class="sticker sticker--float sticker--lg sticker--spark" aria-hidden="true" style="bottom:40px;right:12%;"><svg class="mark"><use href="#logo-mark"/></svg><span class="spark" style="--ang:15deg"></span><span class="spark" style="--ang:75deg"></span><span class="spark" style="--ang:135deg"></span><span class="spark" style="--ang:195deg"></span><span class="spark" style="--ang:255deg"></span><span class="spark" style="--ang:315deg"></span></span>
     <div class="wrap">
       <div class="eyebrow">04 · Under the hood</div>
-      <h2 class="section-title">Record raw. Align later.</h2>
+      <h2 class="section-title">Converting raw phone data into nodes and edges.</h2>
       <div class="prose"><p>Every layer of the pipeline can be swapped without asking anyone to walk the building again &mdash; the recorder never assumes which alignment strategy will win.</p></div>
 
       <div class="tech-block">
@@ -496,7 +496,7 @@
       </div>
 
       <div class="tech-block">
-        <h3 style="font-size:1.05rem;font-family:var(--font-body);font-weight:600;">Two tables. Every route comes out of them.</h3>
+        <h3 style="font-size:1.05rem;font-family:var(--font-body);font-weight:600;">Data storage specifics.</h3>
         <p class="tech-cap">Postgres via Supabase. <span class="mono">nodes</span> is the shared registry; <span class="mono">walks</span> is one row per recorded path, points stored as ordered JSON.</p>
         <div class="schema-grid">
           <div class="table-card">
@@ -526,7 +526,7 @@
       </div>
 
       <div class="tech-block">
-        <h3 style="font-size:1.05rem;font-family:var(--font-body);font-weight:600;">Floors are pressure, not GPS</h3>
+        <h3 style="font-size:1.05rem;font-family:var(--font-body);font-weight:600;">Floors determined heuristically</h3>
         <p class="tech-cap">Floors show up as density peaks in barometric altitude &mdash; people dwell on a floor and only pass quickly through the gap between two of them, so a histogram of samples finds floors even through a continuous stairwell ramp.</p>
         <div class="floor-chart-wrap">
           <svg viewBox="0 0 600 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Barometric altitude over time showing three floor plateaus">
@@ -622,7 +622,6 @@
         <div class="close-line">The outside of every building is already mapped. Insid maps the inside &mdash; one walk at a time.</div>
       </div>
       <div class="contact">
-        <span>Interested in the pipeline, the data, or the pilot?</span>
         <a href="mailto:hello@insid.app">hello@insid.app &nbsp;&#8594;</a>
       </div>
     </div>
